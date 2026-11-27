@@ -1,5 +1,6 @@
 import type { Gpui } from "@folio/effect-ui-gpui"
-import { readProgress, readSegmentedControl } from "@folio/effect-ui-sdk"
+import { deriveBoardView } from "@folio/effect-ui-sdk"
+import { canRedoHistory, canUndoHistory } from "@folio/kanban-core"
 import { paletteFor } from "@folio/kanban-core/theme"
 import { Option } from "effect"
 import type {
@@ -7,44 +8,24 @@ import type {
   KanbanDesktopModel
 } from "../components/KanbanDesktop.ts"
 import { KanbanDesktopMessage as Msg } from "../components/KanbanDesktop.ts"
-import type { PriorityFilter } from "../domain/board.ts"
 import { editorModal } from "./EditorModal.ts"
 import { laneView } from "./LaneView.ts"
-
-const PRIORITY_FILTERS: ReadonlyArray<{
-  readonly value: PriorityFilter
-  readonly label: string
-}> = [
-  { value: "all", label: "All" },
-  { value: "high", label: "High" },
-  { value: "medium", label: "Medium" },
-  { value: "low", label: "Low" }
-]
+import { gpuiSecondaryButtonStyle, gpuiSegmentedControl } from "./ui.ts"
 
 export const boardView = (
   h: Gpui.H<KanbanDesktopMessage>,
   model: KanbanDesktopModel
 ) => {
   const p = paletteFor(model.theme)
-  const allCards = model.columns.flatMap((col) => col.cards)
-  const totalPoints = allCards.reduce((sum, card) => sum + card.points, 0)
-  const donePoints =
-    model.columns
-      .find((col) => col.id === "done")
-      ?.cards.reduce((sum, card) => sum + card.points, 0) ?? 0
-  const velocity = readProgress({
-    id: "desktop-board-velocity",
-    value: donePoints,
-    min: 0,
-    max: totalPoints,
-    ariaLabel: "Sprint velocity"
+  const board = deriveBoardView({
+    idPrefix: "desktop",
+    cards: model.cards,
+    searchQuery: model.searchQuery,
+    priorityFilter: model.priorityFilter
   })
-  const priorityControl = readSegmentedControl({
-    id: "desktop-priority-filter",
-    value: model.priorityFilter,
-    ariaLabel: "Filter by priority",
-    items: PRIORITY_FILTERS
-  })
+  const { velocity: stats, progress: velocity, priorityControl } = board
+  const canUndo = canUndoHistory(model.history)
+  const canRedo = canRedoHistory(model.history)
 
   return h.box
     .testId("board.root")
@@ -131,61 +112,25 @@ export const boardView = (
               gap: 8
             })
             .children(
-              model.canUndo &&
+              canUndo &&
                 h.button
                   .testId("board.undo")
                   .ariaLabel("Undo last board change")
-                  .style({
-                    paddingTop: 6,
-                    paddingBottom: 6,
-                    paddingLeft: 10,
-                    paddingRight: 10,
-                    borderRadius: 6,
-                    borderWidth: 1,
-                    borderColor: p.rule,
-                    backgroundColor: p.card,
-                    color: p.ink,
-                    fontSize: 12,
-                    fontWeight: 600
-                  })
+                  .style(gpuiSecondaryButtonStyle(p, 10))
                   .hover({ backgroundColor: p.cardHover, borderColor: p.ruleStrong })
                   .on("click", Msg.ClickedUndo())
                   .children("Undo"),
-              model.canRedo &&
+              canRedo &&
                 h.button
                   .testId("board.redo")
                   .ariaLabel("Redo board change")
-                  .style({
-                    paddingTop: 6,
-                    paddingBottom: 6,
-                    paddingLeft: 10,
-                    paddingRight: 10,
-                    borderRadius: 6,
-                    borderWidth: 1,
-                    borderColor: p.rule,
-                    backgroundColor: p.card,
-                    color: p.ink,
-                    fontSize: 12,
-                    fontWeight: 600
-                  })
+                  .style(gpuiSecondaryButtonStyle(p, 10))
                   .hover({ backgroundColor: p.cardHover, borderColor: p.ruleStrong })
                   .on("click", Msg.ClickedRedo())
                   .children("Redo"),
               h.button
                 .testId("theme.toggle")
-                .style({
-                  paddingTop: 6,
-                  paddingBottom: 6,
-                  paddingLeft: 12,
-                  paddingRight: 12,
-                  borderRadius: 6,
-                  borderWidth: 1,
-                  borderColor: p.rule,
-                  backgroundColor: p.card,
-                  color: p.ink,
-                  fontSize: 12,
-                  fontWeight: 600
-                })
+                .style(gpuiSecondaryButtonStyle(p))
                 .hover({ backgroundColor: p.cardHover, borderColor: p.ruleStrong })
                 .on("click", Msg.ClickedToggleTheme())
                 .children(
@@ -195,19 +140,7 @@ export const boardView = (
                 ),
               h.button
                 .testId("board.reset")
-                .style({
-                  paddingTop: 6,
-                  paddingBottom: 6,
-                  paddingLeft: 12,
-                  paddingRight: 12,
-                  borderRadius: 6,
-                  borderWidth: 1,
-                  borderColor: p.rule,
-                  backgroundColor: p.card,
-                  color: p.ink,
-                  fontSize: 12,
-                  fontWeight: 600
-                })
+                .style(gpuiSecondaryButtonStyle(p))
                 .hover({ backgroundColor: p.cardHover, borderColor: p.ruleStrong })
                 .on("click", Msg.ClickedResetDemo())
                 .children("Reset demo"),
@@ -227,7 +160,7 @@ export const boardView = (
                   fontWeight: 700
                 })
                 .hover({ backgroundColor: p.accentHover })
-                .on("click", Msg.ClickedAddCard({ columnId: "backlog" }))
+                .on("click", Msg.ClickedAddCard({ lane: "backlog" }))
                 .children("+ New card")
             )
         ),
@@ -274,46 +207,11 @@ export const boardView = (
                   fontSize: 13
                 })
                 .on("change", ({ value }) => Msg.TypedSearchQuery({ value })),
-              h.box
-                .role(priorityControl.rootAttrs.role ?? "radiogroup")
-                .ariaLabel(
-                  priorityControl.rootAttrs["aria-label"] ?? "Filter by priority"
-                )
-                .style({
-                  display: "flex",
-                  flexDirection: "row",
-                  padding: 3,
-                  gap: 2,
-                  borderRadius: 7,
-                  backgroundColor: p.lane,
-                  borderWidth: 1,
-                  borderColor: p.rule
-                })
-                .children(
-                  priorityControl.items.map((opt) =>
-                    h.button
-                      .key(opt.value)
-                      .testId(`filter.${opt.value}`)
-                      .role(opt.attrs.role ?? "radio")
-                      .ariaLabel(`${opt.label} priority`)
-                      .style({
-                        paddingTop: 5,
-                        paddingBottom: 5,
-                        paddingLeft: 10,
-                        paddingRight: 10,
-                        borderRadius: 5,
-                        backgroundColor: opt.checked ? p.cardHover : "transparent",
-                        color: opt.checked ? p.ink : p.inkSoft,
-                        fontSize: 12,
-                        fontWeight: 600
-                      })
-                      .on(
-                        "click",
-                        Msg.SelectedPriorityFilter({ priority: opt.value })
-                      )
-                      .children(opt.label)
-                  )
-                )
+              gpuiSegmentedControl(h, priorityControl, p, {
+                testIdPrefix: "filter",
+                itemAriaLabel: (label) => `${label} priority`,
+                onSelect: (priority) => Msg.SelectedPriorityFilter({ priority })
+              })
             ),
           h.box
             .style({
@@ -344,7 +242,7 @@ export const boardView = (
                     .children("Cards"),
                   h.text
                     .style({ fontSize: 12, fontWeight: 700, color: p.ink })
-                    .children(String(allCards.length))
+                    .children(String(stats.totalCards))
                 ),
               h.box
                 .style({
@@ -367,7 +265,7 @@ export const boardView = (
                     .children("Done"),
                   h.text
                     .style({ fontSize: 12, fontWeight: 700, color: p.ink })
-                    .children(`${donePoints}/${totalPoints}pt`)
+                    .children(`${stats.donePoints}/${stats.totalPoints}pt`)
                 ),
               h.box
                 .role(velocity.rootAttrs.role ?? "progressbar")
@@ -436,6 +334,8 @@ export const boardView = (
           ),
       // 4-lane Kanban Board
       h.box
+        .role(board.board.rootAttrs.role ?? "region")
+        .ariaLabel(board.board.rootAttrs["aria-label"] ?? "Folio Kanban board")
         .style({
           flexGrow: 1,
           minHeight: 0,
@@ -448,11 +348,7 @@ export const boardView = (
           paddingLeft: 18,
           paddingRight: 18
         })
-        .children(
-          model.columns.map((column, idx) =>
-            laneView(h, model, column, idx, p)
-          )
-        ),
+        .children(board.lanes.map((entry) => laneView(h, model, entry, p))),
       // Status bar
       h.box
         .style({
@@ -482,7 +378,7 @@ export const boardView = (
       // Modal editor overlay
       Option.match(model.editDraft, {
         onNone: () => false,
-        onSome: (draft) => editorModal(h, model, draft, p)
+        onSome: (draft) => editorModal(h, draft, p)
       })
     )
 }

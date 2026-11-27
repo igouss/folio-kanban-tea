@@ -48,7 +48,7 @@ export const KanbanCard = Html.component({
   init: () => ({}),
   update: {
     ClickedMoveLeft: ($) => {
-      const { prev } = adjacentColumns($.props.task.column)
+      const { prev } = adjacentColumns($.props.task.lane)
       return prev === undefined
         ? $.model
         : $.emit(
@@ -59,7 +59,7 @@ export const KanbanCard = Html.component({
           )
     },
     ClickedMoveRight: ($) => {
-      const { next } = adjacentColumns($.props.task.column)
+      const { next } = adjacentColumns($.props.task.lane)
       return next === undefined
         ? $.model
         : $.emit(
@@ -74,7 +74,7 @@ export const KanbanCard = Html.component({
   },
   view: (h) => {
     const { busy, compact, searchQuery, task } = h.props
-    const { next, prev } = adjacentColumns(task.column)
+    const { next, prev } = adjacentColumns(task.lane)
     const detailHref = AppRoute.print(
       AppRoute.TaskDetail({ params: { id: task.id } })
     )
@@ -87,6 +87,10 @@ export const KanbanCard = Html.component({
         compact && "is-compact",
         busy && "is-busy"
       )
+      .attrs({
+        role: "listitem",
+        "data-lane": task.lane
+      })
       .style({ viewTransitionName: `card-${task.id}` })
       .draggable({ [CARD_DRAG_TYPE]: task.id }, { effectAllowed: "move" })
       .children(
@@ -95,7 +99,7 @@ export const KanbanCard = Html.component({
             h.span.class("drag-grip").attr("title", "Drag card to another column").children(
               GripIcon(h, 13)
             ),
-            h.span.class("card-key").children(task.key),
+            h.span.class("card-key").children(task.code),
             h.span
               .class("priority-pill", `priority-${task.priority}`)
               .children(priorityLabel(task.priority))

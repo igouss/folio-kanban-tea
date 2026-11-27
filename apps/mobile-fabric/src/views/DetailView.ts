@@ -1,23 +1,12 @@
 import type { Fabric } from "@folio/effect-ui-fabric"
-import { readSegmentedControl } from "@folio/effect-ui-sdk"
-import { LANES, type Priority } from "@folio/kanban-core"
+import { deriveCardEditorControls } from "@folio/effect-ui-sdk"
 import type { FolioPalette as Palette } from "@folio/kanban-core/theme"
 import {
   KanbanMobileMessage as Msg,
   type EditDraft,
   type KanbanMobileMessage
 } from "../domain/schema"
-
-const PRIORITIES: ReadonlyArray<{
-  readonly value: Priority
-  readonly label: string
-}> = [
-  { value: "high", label: "High" },
-  { value: "medium", label: "Medium" },
-  { value: "low", label: "Low" }
-]
-
-const POINTS: ReadonlyArray<number> = [1, 2, 3, 5, 8, 13]
+import { fabricFieldLabel, fabricSegmentedControl } from "./ui"
 
 export const detailView = (
   h: Fabric.H<KanbanMobileMessage>,
@@ -25,24 +14,15 @@ export const detailView = (
   statusBanner: string,
   p: Palette
 ) => {
-  const laneControl = readSegmentedControl({
-    id: "mobile-detail-lane",
-    value: draft.lane,
-    ariaLabel: "Lane",
-    items: LANES.map((lane) => ({ value: lane.id, label: lane.shortTitle }))
-  })
-  const priorityControl = readSegmentedControl({
-    id: "mobile-detail-priority",
-    value: draft.priority,
-    ariaLabel: "Priority",
-    items: PRIORITIES
-  })
-  const pointsControl = readSegmentedControl({
-    id: "mobile-detail-points",
-    value: String(draft.points),
-    ariaLabel: "Story points",
-    items: POINTS.map((pt) => ({ value: String(pt), label: `${pt}` }))
-  })
+  const { laneControl, priorityControl, pointsControl } =
+    deriveCardEditorControls({
+      idPrefix: "mobile",
+      lane: draft.lane,
+      priority: draft.priority,
+      points: draft.points,
+      useShortLaneLabels: true,
+      pointsSuffix: ""
+    })
 
   return h.view
     .key(`detail.${draft.cardId}`)
@@ -112,9 +92,7 @@ export const detailView = (
               h.view
                 .style({ gap: 6 })
                 .children(
-                  h.text
-                    .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
-                    .children("TITLE"),
+                  fabricFieldLabel(h, "TITLE", p),
                   h.textInput
                     .testID("detail.title")
                     .value(draft.title)
@@ -134,124 +112,38 @@ export const detailView = (
               h.view
                 .style({ gap: 6 })
                 .children(
-                  h.text
-                    .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
-                    .children("LANE"),
-                  h.view
-                    .accessibilityLabel(laneControl.rootAttrs["aria-label"] ?? "Lane")
-                    .style({ flexDirection: "row", gap: 6 })
-                    .children(
-                      laneControl.items.map((opt) =>
-                        h.pressable
-                          .key(opt.value)
-                          .testID(`detail.lane.${opt.value}`)
-                          .on("press", Msg.SelectedDraftLane({ lane: opt.value }))
-                          .style({
-                            flex: 1,
-                            paddingVertical: 8,
-                            borderRadius: 7,
-                            alignItems: "center",
-                            backgroundColor: opt.checked ? p.ink : p.surface,
-                            borderWidth: 1,
-                            borderColor: opt.checked ? p.ink : p.border
-                          })
-                          .children(
-                            h.text
-                              .style({
-                                fontSize: 12,
-                                fontWeight: "700",
-                                color: opt.checked ? p.surface : p.ink
-                              })
-                              .children(opt.label)
-                          )
-                      )
-                    )
+                  fabricFieldLabel(h, "LANE", p),
+                  fabricSegmentedControl(h, laneControl, p, {
+                    testIdPrefix: "detail.lane",
+                    tone: "ink",
+                    onSelect: (lane) => Msg.SelectedDraftLane({ lane })
+                  })
                 ),
               h.view
                 .style({ gap: 6 })
                 .children(
-                  h.text
-                    .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
-                    .children("PRIORITY"),
-                  h.view
-                    .accessibilityLabel(
-                      priorityControl.rootAttrs["aria-label"] ?? "Priority"
-                    )
-                    .style({ flexDirection: "row", gap: 6 })
-                    .children(
-                      priorityControl.items.map((opt) =>
-                        h.pressable
-                          .key(opt.value)
-                          .testID(`detail.priority.${opt.value}`)
-                          .on("press", Msg.SelectedDraftPriority({ priority: opt.value }))
-                          .style({
-                            flex: 1,
-                            paddingVertical: 8,
-                            borderRadius: 7,
-                            alignItems: "center",
-                            backgroundColor: opt.checked ? p.accent : p.surface,
-                            borderWidth: 1,
-                            borderColor: opt.checked ? p.accent : p.border
-                          })
-                          .children(
-                            h.text
-                              .style({
-                                fontSize: 12,
-                                fontWeight: "700",
-                                color: opt.checked ? p.accentInk : p.ink
-                              })
-                              .children(opt.label)
-                          )
-                      )
-                    )
+                  fabricFieldLabel(h, "PRIORITY", p),
+                  fabricSegmentedControl(h, priorityControl, p, {
+                    testIdPrefix: "detail.priority",
+                    tone: "accent",
+                    onSelect: (priority) => Msg.SelectedDraftPriority({ priority })
+                  })
                 ),
               h.view
                 .style({ gap: 6 })
                 .children(
-                  h.text
-                    .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
-                    .children("STORY POINTS"),
-                  h.view
-                    .accessibilityLabel(
-                      pointsControl.rootAttrs["aria-label"] ?? "Story points"
-                    )
-                    .style({ flexDirection: "row", gap: 6 })
-                    .children(
-                      pointsControl.items.map((opt) =>
-                        h.pressable
-                          .key(opt.value)
-                          .testID(`detail.points.${opt.value}`)
-                          .on(
-                            "press",
-                            Msg.SelectedDraftPoints({ points: Number(opt.value) })
-                          )
-                          .style({
-                            flex: 1,
-                            paddingVertical: 8,
-                            borderRadius: 7,
-                            alignItems: "center",
-                            backgroundColor: opt.checked ? p.ink : p.surface,
-                            borderWidth: 1,
-                            borderColor: opt.checked ? p.ink : p.border
-                          })
-                          .children(
-                            h.text
-                              .style({
-                                fontSize: 12,
-                                fontWeight: "700",
-                                color: opt.checked ? p.surface : p.ink
-                              })
-                              .children(opt.label)
-                          )
-                      )
-                    )
+                  fabricFieldLabel(h, "STORY POINTS", p),
+                  fabricSegmentedControl(h, pointsControl, p, {
+                    testIdPrefix: "detail.points",
+                    tone: "ink",
+                    onSelect: (value) =>
+                      Msg.SelectedDraftPoints({ points: Number(value) })
+                  })
                 ),
               h.view
                 .style({ gap: 6 })
                 .children(
-                  h.text
-                    .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
-                    .children("ASSIGNEE"),
+                  fabricFieldLabel(h, "ASSIGNEE", p),
                   h.textInput
                     .testID("detail.assignee")
                     .value(draft.assignee)
@@ -271,9 +163,7 @@ export const detailView = (
               h.view
                 .style({ gap: 6 })
                 .children(
-                  h.text
-                    .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
-                    .children("NOTES"),
+                  fabricFieldLabel(h, "NOTES", p),
                   h.textInput
                     .testID("detail.notes")
                     .value(draft.notes)

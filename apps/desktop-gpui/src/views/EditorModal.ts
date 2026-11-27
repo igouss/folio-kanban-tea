@@ -1,48 +1,23 @@
 import type { Gpui } from "@folio/effect-ui-gpui"
-import { readSegmentedControl } from "@folio/effect-ui-sdk"
+import { deriveCardEditorControls } from "@folio/effect-ui-sdk"
+import type { CardDraft } from "@folio/kanban-core"
 import type { FolioPalette as Palette } from "@folio/kanban-core/theme"
-import type {
-  KanbanDesktopMessage,
-  KanbanDesktopModel
-} from "../components/KanbanDesktop.ts"
+import type { KanbanDesktopMessage } from "../components/KanbanDesktop.ts"
 import { KanbanDesktopMessage as Msg } from "../components/KanbanDesktop.ts"
-import type { EditDraft, Priority } from "../domain/board.ts"
-
-const PRIORITIES: ReadonlyArray<{
-  readonly value: Priority
-  readonly label: string
-}> = [
-  { value: "high", label: "High" },
-  { value: "medium", label: "Medium" },
-  { value: "low", label: "Low" }
-]
-
-const POINT_CHOICES: ReadonlyArray<number> = [1, 2, 3, 5, 8, 13]
+import { gpuiFieldLabel, gpuiSecondaryButtonStyle, gpuiSegmentedControl } from "./ui.ts"
 
 export const editorModal = (
   h: Gpui.H<KanbanDesktopMessage>,
-  model: KanbanDesktopModel,
-  draft: EditDraft,
+  draft: CardDraft,
   p: Palette
 ) => {
-  const laneControl = readSegmentedControl({
-    id: "desktop-editor-lane",
-    value: draft.columnId,
-    ariaLabel: "Lane",
-    items: model.columns.map((col) => ({ value: col.id, label: col.name }))
-  })
-  const priorityControl = readSegmentedControl({
-    id: "desktop-editor-priority",
-    value: draft.priority,
-    ariaLabel: "Priority",
-    items: PRIORITIES
-  })
-  const pointsControl = readSegmentedControl({
-    id: "desktop-editor-points",
-    value: String(draft.points),
-    ariaLabel: "Story points",
-    items: POINT_CHOICES.map((pt) => ({ value: String(pt), label: `${pt}pt` }))
-  })
+  const { laneControl, priorityControl, pointsControl } =
+    deriveCardEditorControls({
+      idPrefix: "desktop",
+      lane: draft.lane,
+      priority: draft.priority,
+      points: draft.points
+    })
 
   return h.box
     .testId("editor.modal")
@@ -100,19 +75,7 @@ export const editorModal = (
                 .children(`Edit ${draft.code}`),
               h.button
                 .testId("editor.close")
-                .style({
-                  paddingTop: 6,
-                  paddingBottom: 6,
-                  paddingLeft: 12,
-                  paddingRight: 12,
-                  borderRadius: 6,
-                  borderWidth: 1,
-                  borderColor: p.rule,
-                  backgroundColor: p.card,
-                  color: p.ink,
-                  fontSize: 12,
-                  fontWeight: 600
-                })
+                .style(gpuiSecondaryButtonStyle(p))
                 .hover({ backgroundColor: p.lane })
                 .on("click", Msg.CancelledEditCard())
                 .children("Close")
@@ -120,9 +83,7 @@ export const editorModal = (
           h.box
             .style({ display: "flex", flexDirection: "column", gap: 5 })
             .children(
-              h.text
-                .style({ fontSize: 11, fontWeight: 700, color: p.inkMuted })
-                .children("TITLE"),
+              gpuiFieldLabel(h, "TITLE", p),
               h.input
                 .testId("editor.title")
                 .value(draft.title)
@@ -146,45 +107,12 @@ export const editorModal = (
           h.box
             .style({ display: "flex", flexDirection: "column", gap: 5 })
             .children(
-              h.text
-                .style({ fontSize: 11, fontWeight: 700, color: p.inkMuted })
-                .children("LANE"),
-              h.box
-                .role(laneControl.rootAttrs.role ?? "radiogroup")
-                .ariaLabel(laneControl.rootAttrs["aria-label"] ?? "Lane")
-                .style({
-                  display: "flex",
-                  flexDirection: "row",
-                  padding: 3,
-                  gap: 2,
-                  borderRadius: 7,
-                  backgroundColor: p.lane,
-                  borderWidth: 1,
-                  borderColor: p.rule
-                })
-                .children(
-                  laneControl.items.map((opt) =>
-                    h.button
-                      .key(opt.value)
-                      .testId(`editor.lane.${opt.value}`)
-                      .role(opt.attrs.role ?? "radio")
-                      .style({
-                        flexGrow: 1,
-                        paddingTop: 5,
-                        paddingBottom: 5,
-                        paddingLeft: 8,
-                        paddingRight: 8,
-                        borderRadius: 5,
-                        backgroundColor: opt.checked ? p.cardHover : "transparent",
-                        color: opt.checked ? p.ink : p.inkSoft,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        textAlign: "center"
-                      })
-                      .on("click", Msg.SelectedEditColumn({ columnId: opt.value }))
-                      .children(opt.label)
-                  )
-                )
+              gpuiFieldLabel(h, "LANE", p),
+              gpuiSegmentedControl(h, laneControl, p, {
+                testIdPrefix: "editor.lane",
+                fill: true,
+                onSelect: (lane) => Msg.SelectedEditLane({ lane })
+              })
             ),
           h.box
             .style({ display: "flex", flexDirection: "row", gap: 10 })
@@ -197,50 +125,12 @@ export const editorModal = (
                   gap: 5
                 })
                 .children(
-                  h.text
-                    .style({ fontSize: 11, fontWeight: 700, color: p.inkMuted })
-                    .children("PRIORITY"),
-                  h.box
-                    .role(priorityControl.rootAttrs.role ?? "radiogroup")
-                    .ariaLabel(
-                      priorityControl.rootAttrs["aria-label"] ?? "Priority"
-                    )
-                    .style({
-                      display: "flex",
-                      flexDirection: "row",
-                      padding: 3,
-                      gap: 2,
-                      borderRadius: 7,
-                      backgroundColor: p.lane,
-                      borderWidth: 1,
-                      borderColor: p.rule
-                    })
-                    .children(
-                      priorityControl.items.map((opt) =>
-                        h.button
-                          .key(opt.value)
-                          .testId(`editor.priority.${opt.value}`)
-                          .role(opt.attrs.role ?? "radio")
-                          .style({
-                            flexGrow: 1,
-                            paddingTop: 5,
-                            paddingBottom: 5,
-                            paddingLeft: 8,
-                            paddingRight: 8,
-                            borderRadius: 5,
-                            backgroundColor: opt.checked ? p.cardHover : "transparent",
-                            color: opt.checked ? p.ink : p.inkSoft,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            textAlign: "center"
-                          })
-                          .on(
-                            "click",
-                            Msg.SelectedEditPriority({ priority: opt.value })
-                          )
-                          .children(opt.label)
-                      )
-                    )
+                  gpuiFieldLabel(h, "PRIORITY", p),
+                  gpuiSegmentedControl(h, priorityControl, p, {
+                    testIdPrefix: "editor.priority",
+                    fill: true,
+                    onSelect: (priority) => Msg.SelectedEditPriority({ priority })
+                  })
                 ),
               h.box
                 .style({
@@ -250,9 +140,7 @@ export const editorModal = (
                   gap: 5
                 })
                 .children(
-                  h.text
-                    .style({ fontSize: 11, fontWeight: 700, color: p.inkMuted })
-                    .children("ASSIGNEE"),
+                  gpuiFieldLabel(h, "ASSIGNEE", p),
                   h.input
                     .testId("editor.assignee")
                     .value(draft.assignee)
@@ -275,55 +163,17 @@ export const editorModal = (
           h.box
             .style({ display: "flex", flexDirection: "column", gap: 5 })
             .children(
-              h.text
-                .style({ fontSize: 11, fontWeight: 700, color: p.inkMuted })
-                .children("STORY POINTS"),
-              h.box
-                .role(pointsControl.rootAttrs.role ?? "radiogroup")
-                .ariaLabel(
-                  pointsControl.rootAttrs["aria-label"] ?? "Story points"
-                )
-                .style({
-                  display: "flex",
-                  flexDirection: "row",
-                  padding: 3,
-                  gap: 2,
-                  borderRadius: 7,
-                  backgroundColor: p.lane,
-                  borderWidth: 1,
-                  borderColor: p.rule
-                })
-                .children(
-                  pointsControl.items.map((opt) =>
-                    h.button
-                      .key(opt.value)
-                      .testId(`editor.points.${opt.value}`)
-                      .role(opt.attrs.role ?? "radio")
-                      .style({
-                        flexGrow: 1,
-                        paddingTop: 5,
-                        paddingBottom: 5,
-                        borderRadius: 5,
-                        backgroundColor: opt.checked ? p.cardHover : "transparent",
-                        color: opt.checked ? p.ink : p.inkSoft,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        textAlign: "center"
-                      })
-                      .on(
-                        "click",
-                        Msg.SelectedEditPoints({ points: Number(opt.value) })
-                      )
-                      .children(opt.label)
-                  )
-                )
+              gpuiFieldLabel(h, "STORY POINTS", p),
+              gpuiSegmentedControl(h, pointsControl, p, {
+                testIdPrefix: "editor.points",
+                fill: true,
+                onSelect: (value) => Msg.SelectedEditPoints({ points: Number(value) })
+              })
             ),
           h.box
             .style({ display: "flex", flexDirection: "column", gap: 5 })
             .children(
-              h.text
-                .style({ fontSize: 11, fontWeight: 700, color: p.inkMuted })
-                .children("NOTES"),
+              gpuiFieldLabel(h, "NOTES", p),
               h.textarea
                 .testId("editor.notes")
                 .value(draft.notes)
@@ -370,13 +220,7 @@ export const editorModal = (
                   fontSize: 12,
                   fontWeight: 600
                 })
-                .on(
-                  "click",
-                  Msg.ClickedDeleteCard({
-                    cardId: draft.cardId,
-                    columnId: draft.columnId
-                  })
-                )
+                .on("click", Msg.ClickedDeleteCard({ cardId: draft.cardId }))
                 .children("Delete card"),
               h.box
                 .style({ display: "flex", flexDirection: "row", gap: 8 })

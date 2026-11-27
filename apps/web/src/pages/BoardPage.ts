@@ -1,19 +1,20 @@
 import { PlusIcon, RefreshIcon, SearchIcon } from "#components/Icons"
 import { CARD_DRAG_TYPE, KanbanCard } from "#components/KanbanCard"
-import { ColumnId, COLUMNS, columnTitle, type Task } from "#domain/Task"
+import { ColumnId, columnTitle, type Task } from "#domain/Task"
 import { ListTasks } from "#queries/ListTasks"
 import { Command, Component, Head, Router } from "@effect/ui"
 import { Html, HtmlHead } from "@effect/ui/html"
 import {
   applyHtmlAttrs,
-  filterAndRankCards,
+  deriveBoardView,
   nextSegmentedValue,
-  readProgress,
-  readSegmentedControl
+  readSegmentedControl,
+  type SegmentedControlSnapshot
 } from "@folio/effect-ui-sdk"
+import { validateCardTitle } from "@folio/kanban-core"
 import { Layer, Schema } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { AppRoute, type PriorityFilter } from "../routes.ts"
+import { AppRoute } from "../routes.ts"
 import {
   BoardPageMessage,
   DeleteCard,
@@ -58,16 +59,6 @@ const BoardPageDef = Html.component({
   })
 })
 
-const priorityOptions: ReadonlyArray<{
-  readonly value: PriorityFilter
-  readonly label: string
-}> = [
-  { value: "all", label: "All priorities" },
-  { value: "high", label: "High" },
-  { value: "medium", label: "Medium" },
-  { value: "low", label: "Low" }
-]
-
 const densityOptions: ReadonlyArray<{
   readonly value: "comfortable" | "compact"
   readonly label: string
@@ -75,6 +66,30 @@ const densityOptions: ReadonlyArray<{
   { value: "comfortable", label: "Detailed" },
   { value: "compact", label: "Compact" }
 ]
+
+const renderSegmentedControl = <T extends string>(
+  h: Html.H<typeof BoardPageMessage.Type>,
+  control: SegmentedControlSnapshot<T>,
+  current: T,
+  onSelect: (value: T) => typeof BoardPageMessage.Type
+) =>
+  applyHtmlAttrs(h.div.class("segmented-control"), control.rootAttrs).children(
+    control.items.map((opt) =>
+      applyHtmlAttrs(
+        h.button
+          .key(opt.value)
+          .class("segment-btn", opt.checked && "is-active")
+          .attr("type", "button"),
+        opt.attrs
+      )
+        .on("click", onSelect(opt.value))
+        .on("keydown", ({ key }) => {
+          const next = nextSegmentedValue(control.items, current, key)
+          return next !== undefined ? onSelect(next) : undefined
+        })
+        .children(opt.label)
+    )
+  )
 
 export const BoardPageNoDeps = BoardPageDef.make({
   init: () => ({
@@ -133,9 +148,9 @@ export const BoardPageNoDeps = BoardPageDef.make({
       $.evolve({ composingColumn: null, composerTitle: "" }),
     SubmittedComposer: ($) => {
       const column = $.model.composingColumn
-      const title = $.model.composerTitle.trim()
       if (column === null) return $.model
-      if (title.length < 3) {
+      const check = validateCardTitle($.model.composerTitle, 3)
+      if (!check.ok) {
         return $.evolve({
           notice: {
             tone: "error" as const,
@@ -147,7 +162,7 @@ export const BoardPageNoDeps = BoardPageDef.make({
         composingColumn: null,
         composerTitle: "",
         notice: null
-      }).run(QuickCreateCard.make({ title, column }))
+      }).run(QuickCreateCard.make({ title: check.title, column }))
     },
     ClickedResetBoard: ($) =>
       $.evolve({ notice: null }).run(ResetBoard.make()),
@@ -202,24 +217,14 @@ export const BoardPageNoDeps = BoardPageDef.make({
     const compact = density === "compact"
 
     const renderBoard = (allTasks: ReadonlyArray<Task>, waiting: boolean) => {
-      const visibleTasks = filterAndRankCards(allTasks, queryText, priority)
-      const totalPoints = allTasks.reduce((sum, task) => sum + task.points, 0)
-      const donePoints = allTasks
-        .filter((task) => task.column === "done")
-        .reduce((sum, task) => sum + task.points, 0)
-      const velocity = readProgress({
-        id: "web-board-velocity",
-        value: donePoints,
-        min: 0,
-        max: totalPoints,
-        ariaLabel: "Sprint velocity"
+      const boardView = deriveBoardView({
+        idPrefix: "web",
+        cards: allTasks,
+        searchQuery: queryText,
+        priorityFilter: priority,
+        priorityLabelStyle: "long"
       })
-      const priorityControl = readSegmentedControl({
-        id: "web-priority-filter",
-        value: priority,
-        ariaLabel: "Filter by priority",
-        items: priorityOptions
-      })
+      const { progress: velocity, priorityControl } = boardView
       const densityControl = readSegmentedControl({
         id: "web-density-toggle",
         value: density,
@@ -239,11 +244,15 @@ export const BoardPageNoDeps = BoardPageDef.make({
           h.div.class("board-telemetry").children(
             h.div.class("stat-block").children(
               h.span.class("stat-label").children("Cards"),
-              h.span.class("stat-value").children(String(allTasks.length))
+              h.span.class("stat-value").children(String(boardView.velocity.totalCards))
             ),
             h.div.class("stat-block").children(
               h.span.class("stat-label").children("Completed"),
-              h.span.class("stat-value").children(`${donePoints}/${totalPoints}pt`)
+              h.span
+                .class("stat-value")
+                .children(
+                  `${boardView.velocity.donePoints}/${boardView.velocity.totalPoints}pt`
+                )
             ),
             applyHtmlAttrs(
               h.div.class("stat-block progress-block"),
@@ -284,63 +293,11 @@ export const BoardPageNoDeps = BoardPageDef.make({
               )
           ),
           h.div.class("toolbar-group").children(
-            applyHtmlAttrs(
-              h.div.class("segmented-control"),
-              priorityControl.rootAttrs
-            ).children(
-              priorityControl.items.map((opt) =>
-                applyHtmlAttrs(
-                  h.button
-                    .key(opt.value)
-                    .class("segment-btn", opt.checked && "is-active")
-                    .attr("type", "button"),
-                  opt.attrs
-                )
-                  .on(
-                    "click",
-                    BoardPageMessage.SelectedPriority({ priority: opt.value })
-                  )
-                  .on("keydown", ({ key }) => {
-                    const next = nextSegmentedValue(
-                      priorityControl.items,
-                      priority,
-                      key
-                    )
-                    return next !== undefined
-                      ? BoardPageMessage.SelectedPriority({ priority: next })
-                      : undefined
-                  })
-                  .children(opt.label)
-              )
+            renderSegmentedControl(h, priorityControl, priority, (value) =>
+              BoardPageMessage.SelectedPriority({ priority: value })
             ),
-            applyHtmlAttrs(
-              h.div.class("segmented-control"),
-              densityControl.rootAttrs
-            ).children(
-              densityControl.items.map((opt) =>
-                applyHtmlAttrs(
-                  h.button
-                    .key(opt.value)
-                    .class("segment-btn", opt.checked && "is-active")
-                    .attr("type", "button"),
-                  opt.attrs
-                )
-                  .on(
-                    "click",
-                    BoardPageMessage.SelectedDensity({ density: opt.value })
-                  )
-                  .on("keydown", ({ key }) => {
-                    const next = nextSegmentedValue(
-                      densityControl.items,
-                      density,
-                      key
-                    )
-                    return next !== undefined
-                      ? BoardPageMessage.SelectedDensity({ density: next })
-                      : undefined
-                  })
-                  .children(opt.label)
-              )
+            renderSegmentedControl(h, densityControl, density, (value) =>
+              BoardPageMessage.SelectedDensity({ density: value })
             ),
             h.button
               .class("ghost-btn")
@@ -365,26 +322,27 @@ export const BoardPageNoDeps = BoardPageDef.make({
                 .on("click", BoardPageMessage.DismissedNotice())
                 .children("Dismiss")
             ),
-        h.div.class("kanban-columns").children(
-          COLUMNS.map((col) => {
-            const colTasks = visibleTasks.filter(
-              (task) => task.column === col.id
-            )
-            const colPoints = colTasks.reduce((sum, task) => sum + task.points, 0)
-            const overWip =
-              col.wipLimit !== undefined && colTasks.length > col.wipLimit
+        applyHtmlAttrs(
+          h.div.class("kanban-columns"),
+          boardView.board.rootAttrs
+        ).children(
+          boardView.lanes.map((entry) => {
+            const { lane: col, stats, visibleCards: colTasks, visiblePoints } = entry
+            const overWip = stats.overWip
             const isDropTarget = model.dropOver === col.id
             const isComposing = model.composingColumn === col.id
 
-            return h.section
-              .key(col.id)
-              .class(
-                "kanban-column",
-                `column-${col.id}`,
-                isDropTarget && "is-drop-over",
-                overWip && "is-over-wip"
-              )
-              .attr("aria-label", `${col.title} column`)
+            return applyHtmlAttrs(
+              h.section
+                .key(col.id)
+                .class(
+                  "kanban-column",
+                  `column-${col.id}`,
+                  isDropTarget && "is-drop-over",
+                  overWip && "is-over-wip"
+                ),
+              entry.laneAttrs
+            )
               .dropTarget({ accepts: [CARD_DRAG_TYPE], dropEffect: "move" })
               .on(
                 "dragenter",
@@ -407,14 +365,10 @@ export const BoardPageNoDeps = BoardPageDef.make({
                     h.h2.class("column-title").children(col.title),
                     h.span
                       .class("column-count", overWip && "is-over")
-                      .children(
-                        col.wipLimit !== undefined
-                          ? `${colTasks.length}/${col.wipLimit}`
-                          : String(colTasks.length)
-                      )
+                      .children(entry.visibleWipText)
                   ),
                   h.div.class("column-meta-row").children(
-                    h.span.class("column-points").children(`${colPoints} pt`),
+                    h.span.class("column-points").children(`${visiblePoints} pt`),
                     overWip &&
                       h.span.class("wip-warning").children("WIP exceeded")
                   )

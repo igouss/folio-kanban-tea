@@ -1,9 +1,8 @@
-import { ColumnId } from "#domain/Task"
+import { ColumnId, PriorityFilter } from "#domain/Task"
 import { Route } from "@effect/ui"
 import { Effect, Schema } from "effect"
 
-export const PriorityFilter = Schema.Literals(["all", "high", "medium", "low"])
-export type PriorityFilter = typeof PriorityFilter.Type
+export { PriorityFilter }
 
 export const BoardDensity = Schema.Literals(["comfortable", "compact"])
 export type BoardDensity = typeof BoardDensity.Type

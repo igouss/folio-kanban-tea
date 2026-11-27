@@ -12,6 +12,8 @@ import {
   type TransferReason,
   type UndoStackOptions
 } from "@ui-sdk/core"
+import { attrs, partState } from "@ui-sdk/core/renderer"
+import { toStringAttrs, type StringAttrs } from "./bridge.ts"
 
 export type { TransferLists, TransferReason, UndoStackOptions }
 
@@ -276,6 +278,111 @@ export const kanbanBoard = definePrimitive({
     actions: ["moveCard", "selectCard", "clearSelection"]
   }
 })
+
+export interface ReadKanbanBoardLaneInput {
+  readonly id: string
+  readonly label: string
+}
+
+export interface ReadKanbanBoardCardInput {
+  readonly id: string
+  readonly lane: string
+  readonly disabled?: boolean
+}
+
+export interface ReadKanbanBoardOptions {
+  readonly id: string
+  readonly label?: string
+  readonly lists: TransferLists
+  readonly lanes: ReadonlyArray<ReadKanbanBoardLaneInput>
+  readonly cards?: ReadonlyArray<ReadKanbanBoardCardInput>
+  readonly wipLimits?: Readonly<Record<string, number | null>>
+  readonly selected?: ReadonlyArray<string>
+}
+
+export interface KanbanLanePartSnapshot {
+  readonly id: string
+  readonly count: number
+  readonly overWip: boolean
+  readonly attrs: StringAttrs
+}
+
+export interface KanbanCardPartSnapshot {
+  readonly id: string
+  readonly lane: string
+  readonly selected: boolean
+  readonly attrs: StringAttrs
+}
+
+export interface KanbanBoardSnapshot {
+  readonly id: string
+  readonly rootAttrs: StringAttrs
+  readonly lanes: Readonly<Record<string, KanbanLanePartSnapshot>>
+  readonly cards: Readonly<Record<string, KanbanCardPartSnapshot>>
+}
+
+export const readKanbanBoard = (
+  options: ReadKanbanBoardOptions
+): KanbanBoardSnapshot => {
+  const instance = kanbanBoard({
+    id: options.id,
+    lists: options.lists,
+    order: options.lanes.map((lane) => lane.id),
+    ...(options.label !== undefined ? { label: options.label } : {}),
+    ...(options.wipLimits !== undefined ? { wipLimits: options.wipLimits } : {}),
+    ...(options.selected !== undefined ? { selected: [...options.selected] } : {})
+  })
+
+  try {
+    const rootPart = instance.part("root")
+    const rootAttrs = toStringAttrs(attrs(rootPart))
+
+    const lanes: Record<string, KanbanLanePartSnapshot> = {}
+    for (const lane of options.lanes) {
+      const lanePart = instance.part("lane", {
+        value: lane.id,
+        label: lane.label
+      })
+      const state = partState(lanePart) as {
+        readonly count: number
+        readonly overWip: boolean
+      }
+      lanes[lane.id] = {
+        id: lane.id,
+        count: state.count,
+        overWip: state.overWip,
+        attrs: toStringAttrs(attrs(lanePart))
+      }
+    }
+
+    const cards: Record<string, KanbanCardPartSnapshot> = {}
+    for (const card of options.cards ?? []) {
+      const cardPart = instance.part("card", {
+        value: card.id,
+        lane: card.lane,
+        ...(card.disabled !== undefined ? { disabled: card.disabled } : {})
+      })
+      const state = partState(cardPart) as {
+        readonly selected: boolean
+      }
+      cards[card.id] = {
+        id: card.id,
+        lane: card.lane,
+        selected: state.selected,
+        attrs: toStringAttrs(attrs(cardPart))
+      }
+    }
+
+    return {
+      id: options.id,
+      rootAttrs,
+      lanes,
+      cards
+    }
+  } finally {
+    instance.destroy()
+  }
+}
 
 export interface BoardHistory<State> {
   readonly record: (

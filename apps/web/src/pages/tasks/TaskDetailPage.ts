@@ -1,7 +1,9 @@
 import { ArrowLeftIcon, CheckIcon, TrashIcon } from "#components/Icons"
 import {
   ColumnId,
-  COLUMNS,
+  LANES,
+  PRIORITY_OPTIONS,
+  STORY_POINTS,
   Task,
   TaskPriority,
   TasksTag
@@ -17,6 +19,7 @@ import {
   UiSchema
 } from "@effect/ui"
 import { Html } from "@effect/ui/html"
+import { isCardDirty, normalizeDraftAssignee } from "@folio/kanban-core"
 import { Effect, Layer, Schema, Stream } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { AppRoute } from "../../routes.ts"
@@ -90,14 +93,6 @@ export class DeleteDetailCard extends Command.Service<DeleteDetailCard>()(
   )
 }
 
-const isDirty = (draft: Task, saved: Task): boolean =>
-  draft.title !== saved.title ||
-  draft.notes !== saved.notes ||
-  draft.column !== saved.column ||
-  draft.priority !== saved.priority ||
-  draft.assignee !== saved.assignee ||
-  draft.points !== saved.points
-
 const CardEditorDef = Html.component({
   name: "CardEditor",
   props: Schema.Struct({ task: Task }),
@@ -136,7 +131,7 @@ export const CardEditorNoDeps = CardEditorDef.make({
       }),
     SelectedColumn: ($, { column }) =>
       $.evolve({
-        draft: (draft) => ({ ...draft, column }),
+        draft: (draft) => ({ ...draft, lane: column }),
         edits: (n) => n + 1,
         error: null
       }),
@@ -150,7 +145,7 @@ export const CardEditorNoDeps = CardEditorDef.make({
       $.evolve({
         draft: (draft) => ({
           ...draft,
-          assignee: assignee.toUpperCase().slice(0, 3)
+          assignee: normalizeDraftAssignee(assignee)
         }),
         edits: (n) => n + 1,
         error: null
@@ -162,7 +157,7 @@ export const CardEditorNoDeps = CardEditorDef.make({
         error: null
       }),
     RequestedSave: ($) =>
-      isDirty($.model.draft, $.model.saved)
+      isCardDirty($.model.draft, $.model.saved)
         ? $.evolve({ error: null }).run(SaveCard.make({ task: $.model.draft }))
         : $.model,
     SucceededSaveCard: ($, { task }) =>
@@ -180,7 +175,7 @@ export const CardEditorNoDeps = CardEditorDef.make({
   },
   // Keyed on `model.edits` so every keystroke restarts the 2-second debounce cleanly.
   subscriptions: ({ model }) => [
-    isDirty(model.draft, model.saved) &&
+    isCardDirty(model.draft, model.saved) &&
       Subscription.make("autosave-card", model.edits, () =>
         Stream.fromEffect(
           Effect.as(
@@ -191,13 +186,13 @@ export const CardEditorNoDeps = CardEditorDef.make({
       )
   ],
   view: (h, model) => {
-    const dirty = isDirty(model.draft, model.saved)
+    const dirty = isCardDirty(model.draft, model.saved)
     const saving = h.isRunning(SaveCard)
 
     return h.div.class("page-card").children(
       h.div.class("editor-top-bar").children(
         h.div.class("editor-id-row").children(
-          h.span.class("card-key large").children(model.saved.key),
+          h.span.class("card-key large").children(model.saved.code),
           h.span
             .class("save-status-pill", dirty ? "is-dirty" : "is-saved")
             .children(
@@ -242,15 +237,15 @@ export const CardEditorNoDeps = CardEditorDef.make({
               h.select
                 .class("field-select")
                 .attr("id", "edit-column")
-                .value(model.draft.column)
+                .value(model.draft.lane)
                 .on("change", ({ value }) => {
-                  const found = COLUMNS.find((c) => c.id === value)
+                  const found = LANES.find((c) => c.id === value)
                   return found
                     ? CardEditorMessage.SelectedColumn({ column: found.id })
                     : undefined
                 })
                 .children(
-                  COLUMNS.map((col) =>
+                  LANES.map((col) =>
                     h.option.key(col.id).attr("value", col.id).children(col.title)
                   )
                 )
@@ -261,15 +256,16 @@ export const CardEditorNoDeps = CardEditorDef.make({
                 .class("field-select")
                 .attr("id", "edit-priority")
                 .value(model.draft.priority)
-                .on("change", ({ value }) =>
-                  value === "high" || value === "medium" || value === "low"
-                    ? CardEditorMessage.SelectedPriority({ priority: value })
+                .on("change", ({ value }) => {
+                  const found = PRIORITY_OPTIONS.find((p) => p.value === value)
+                  return found
+                    ? CardEditorMessage.SelectedPriority({ priority: found.value })
                     : undefined
-                )
+                })
                 .children(
-                  h.option.attr("value", "high").children("High"),
-                  h.option.attr("value", "medium").children("Medium"),
-                  h.option.attr("value", "low").children("Low")
+                  PRIORITY_OPTIONS.map((opt) =>
+                    h.option.key(opt.value).attr("value", opt.value).children(opt.label)
+                  )
                 )
             ),
             h.div.class("form-field").children(
@@ -292,7 +288,7 @@ export const CardEditorNoDeps = CardEditorDef.make({
                   CardEditorMessage.UpdatedPoints({ points: Number(value) })
                 )
                 .children(
-                  [1, 2, 3, 5, 8, 13].map((pt) =>
+                  STORY_POINTS.map((pt) =>
                     h.option
                       .key(String(pt))
                       .attr("value", String(pt))
@@ -340,7 +336,7 @@ export const CardEditorNoDeps = CardEditorDef.make({
         .on("cancel", CardEditorMessage.CancelledDeleteDialog())
         .on("close", CardEditorMessage.ClosedDeleteDialog())
         .children(
-          h.h2.class("dialog-title").children(`Delete ${model.saved.key}?`),
+          h.h2.class("dialog-title").children(`Delete ${model.saved.code}?`),
           h.p.class("dialog-body").children(
             `"${model.saved.title}" will be permanently removed from the board.`
           ),
@@ -386,7 +382,7 @@ export const TaskDetailPageNoDeps = Html.component({
   head: ({ queries }) => [
     Head.title(
       AsyncResult.isSuccess(queries.task)
-        ? `${queries.task.value.key} · ${queries.task.value.title}`
+        ? `${queries.task.value.code} · ${queries.task.value.title}`
         : "Card"
     )
   ],

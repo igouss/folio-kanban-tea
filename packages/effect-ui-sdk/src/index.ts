@@ -32,10 +32,28 @@ export {
   createBoardHistory,
   formatTransferNotice,
   kanbanBoard,
+  readKanbanBoard,
   type BoardHistory,
   type KanbanBoardOptions,
+  type KanbanBoardSnapshot,
+  type KanbanCardPartSnapshot,
+  type KanbanLanePartSnapshot,
   type KanbanSelectionReason,
+  type ReadKanbanBoardCardInput,
+  type ReadKanbanBoardLaneInput,
+  type ReadKanbanBoardOptions,
   type TransferLists,
   type TransferReason,
   type UndoStackOptions
 } from "./kanbanPrimitive.ts"
+
+export {
+  deriveBoardView,
+  deriveCardEditorControls,
+  type BoardViewSnapshot,
+  type CardEditorControlsSnapshot,
+  type DeriveBoardViewOptions,
+  type DeriveCardEditorControlsOptions,
+  type LaneViewSnapshot,
+  type PriorityFilterLabelStyle
+} from "./boardView.ts"

@@ -14,8 +14,7 @@
     "@folio/effect-ui-sdk": "*",
     "@folio/kanban-core": "*",
     "@gpuix/native": "0.10.0",
-    "effect": "^4.1.6",
-    "fractional-indexing": "4.0.0"
+    "effect": "^4.1.6"
   },
   "optionalDependencies": {
     "@gpuix/native-darwin-arm64": "0.10.0",

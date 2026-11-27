@@ -1,5 +1,6 @@
 import type { Gpui } from "@folio/effect-ui-gpui"
-import { filterAndRankCards } from "@folio/effect-ui-sdk"
+import type { LaneViewSnapshot } from "@folio/effect-ui-sdk"
+import type { KanbanCard, LaneMeta } from "@folio/kanban-core"
 import type { FolioPalette as Palette } from "@folio/kanban-core/theme"
 import { Option } from "effect"
 import type {
@@ -7,23 +8,19 @@ import type {
   KanbanDesktopModel
 } from "../components/KanbanDesktop.ts"
 import { KanbanDesktopMessage as Msg } from "../components/KanbanDesktop.ts"
-import type { Column } from "../domain/board.ts"
 import { cardView } from "./CardView.ts"
 
 const addCardSection = (
   h: Gpui.H<KanbanDesktopMessage>,
   model: KanbanDesktopModel,
-  column: Column,
+  lane: LaneMeta,
   p: Palette
 ) => {
-  const isAdding = Option.exists(
-    model.newCardColumnId,
-    (id) => id === column.id
-  )
+  const isAdding = Option.exists(model.newCardLane, (id) => id === lane.id)
 
   if (!isAdding) {
     return h.button
-      .testId(`lane.add.${column.id}`)
+      .testId(`lane.add.${lane.id}`)
       .style({
         width: "100%",
         paddingTop: 7,
@@ -40,7 +37,7 @@ const addCardSection = (
         textAlign: "left"
       })
       .hover({ backgroundColor: p.card, color: p.ink })
-      .on("click", Msg.ClickedAddCard({ columnId: column.id }))
+      .on("click", Msg.ClickedAddCard({ lane: lane.id }))
       .children("+ Add card")
   }
 
@@ -60,7 +57,7 @@ const addCardSection = (
         .testId("add.input")
         .autoFocus(true)
         .value(model.newCardTitle)
-        .placeholder(`New card in ${column.name}...`)
+        .placeholder(`New card in ${lane.title}...`)
         .style({
           width: "100%",
           paddingTop: 7,
@@ -129,24 +126,17 @@ const addCardSection = (
 export const laneView = (
   h: Gpui.H<KanbanDesktopMessage>,
   model: KanbanDesktopModel,
-  column: Column,
-  columnIndex: number,
+  entry: LaneViewSnapshot<KanbanCard>,
   p: Palette
 ) => {
-  const filteredCards = filterAndRankCards(
-    column.cards,
-    model.searchQuery,
-    model.priorityFilter
-  )
-  const lanePoints = filteredCards.reduce((sum, c) => sum + c.points, 0)
-  const overWip =
-    column.wipLimit !== null && column.cards.length > column.wipLimit
+  const { lane, stats, visibleCards, visiblePoints, visibleWipText, laneAttrs } = entry
+  const overWip = stats.overWip
 
   return h.box
-    .key(column.id)
-    .testId(`lane.${column.id}`)
-    .role("region")
-    .ariaLabel(column.name)
+    .key(lane.id)
+    .testId(`lane.${lane.id}`)
+    .role(laneAttrs.role ?? "list")
+    .ariaLabel(laneAttrs["aria-label"] ?? lane.title)
     .style({
       flexGrow: 1,
       flexBasis: 0,
@@ -191,10 +181,10 @@ export const laneView = (
                 .children(
                   h.text
                     .style({ fontSize: 11, fontWeight: 700, color: p.inkMuted })
-                    .children(column.code),
+                    .children(lane.code),
                   h.text
                     .style({ fontSize: 15, fontWeight: 700, color: p.ink })
-                    .children(column.name)
+                    .children(lane.title)
                 ),
               h.box
                 .style({
@@ -214,11 +204,7 @@ export const laneView = (
                       fontWeight: 700,
                       color: overWip ? p.accent : p.inkSoft
                     })
-                    .children(
-                      column.wipLimit !== null
-                        ? `${filteredCards.length}/${column.wipLimit}`
-                        : `${filteredCards.length}`
-                    )
+                    .children(visibleWipText)
                 )
             ),
           h.box
@@ -231,7 +217,7 @@ export const laneView = (
             .children(
               h.text
                 .style({ fontSize: 11, fontWeight: 600, color: p.inkMuted })
-                .children(`${lanePoints} pt`),
+                .children(`${visiblePoints} pt`),
               overWip &&
                 h.text
                   .style({ fontSize: 10, fontWeight: 700, color: p.accent })
@@ -248,7 +234,7 @@ export const laneView = (
           overflowY: "auto"
         })
         .children(
-          filteredCards.length === 0
+          visibleCards.length === 0
             ? h.box
                 .style({
                   paddingTop: 20,
@@ -267,9 +253,7 @@ export const laneView = (
                     .style({ fontSize: 12, color: p.inkMuted })
                     .children("No matching cards in lane")
                 )
-            : filteredCards.map((card) =>
-                cardView(h, model, card, column.id, columnIndex, p)
-              )
+            : visibleCards.map((card) => cardView(h, card, p))
         ),
       h.box
         .style({
@@ -278,6 +262,6 @@ export const laneView = (
           borderTopWidth: 1,
           borderColor: p.rule
         })
-        .children(addCardSection(h, model, column, p))
+        .children(addCardSection(h, model, lane, p))
     )
 }

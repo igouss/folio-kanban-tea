@@ -2,12 +2,21 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import { GpuiHost } from "@folio/effect-ui-gpui"
 import { createFakeGpuixRenderer } from "@folio/effect-ui-gpui/testing"
+import { canRedoHistory, canUndoHistory, cardsInLane } from "@folio/kanban-core"
 import { Effect, Layer, Option } from "effect"
 import { KanbanDesktop, SaveBoard } from "../src/components/KanbanDesktop.ts"
 import { makeMemoryStorageLayer } from "../src/services/storage.ts"
 
 const tick = (): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, 10))
+  new Promise((resolve) => setTimeout(resolve, 15))
+
+const waitFor = async (predicate: () => boolean, timeoutMs = 500): Promise<void> => {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate()) {
+    if (Date.now() >= deadline) break
+    await tick()
+  }
+}
 
 describe("Folio Kanban Desktop (@effect/ui + Zed GPUI Host)", () => {
   it("mounts on GPUI, updates window title, moves cards, toggles theme, adds & edits cards", async () => {
@@ -36,22 +45,24 @@ describe("Folio Kanban Desktop (@effect/ui + Zed GPUI Host)", () => {
 
           // Move FOL-101 from In Progress to In Review via native GPUI click
           renderer.clickByTestId("card.next.card-101")
-          yield* Effect.promise(tick)
+          yield* Effect.promise(() => waitFor(() => storage.getSaved() !== undefined))
 
           const afterMove = root.model()!
-          const inProgress = afterMove.columns.find((c) => c.id === "in_progress")!
-          const review = afterMove.columns.find((c) => c.id === "review")!
+          const inProgress = cardsInLane(afterMove.cards, "in_progress")
+          const review = cardsInLane(afterMove.cards, "review")
           assert.equal(
-            inProgress.cards.some((c) => c.id === "card-101"),
+            inProgress.some((c) => c.id === "card-101"),
             false
           )
-          assert.equal(review.cards[0]?.id, "card-101")
+          assert.equal(review[0]?.id, "card-101")
           assert.equal(afterMove.dispatchCount, 1)
           assert.ok(storage.getSaved() !== undefined)
 
           // Toggle Paper -> Graphite theme
           renderer.clickByTestId("theme.toggle")
-          yield* Effect.promise(tick)
+          yield* Effect.promise(() =>
+            waitFor(() => storage.getSaved()?.theme === "graphite")
+          )
           assert.equal(root.model()!.theme, "graphite")
           assert.equal(storage.getSaved()!.theme, "graphite")
 
@@ -63,8 +74,8 @@ describe("Folio Kanban Desktop (@effect/ui + Zed GPUI Host)", () => {
           renderer.submitByTestId("add.input", "Ship @effect/ui on Zed GPUI")
           yield* Effect.promise(tick)
 
-          const backlog = root.model()!.columns.find((c) => c.id === "backlog")!
-          const created = backlog.cards.find(
+          const backlog = cardsInLane(root.model()!.cards, "backlog")
+          const created = backlog.find(
             (c) => c.title === "Ship @effect/ui on Zed GPUI"
           )
           assert.ok(created)
@@ -91,23 +102,23 @@ describe("Folio Kanban Desktop (@effect/ui + Zed GPUI Host)", () => {
           yield* Effect.promise(tick)
 
           assert.equal(renderer.findByTestId("editor.modal"), undefined)
-          const done = root.model()!.columns.find((c) => c.id === "done")!
-          assert.equal(done.cards[0]?.title, "Refined GPUI native host")
+          const done = cardsInLane(root.model()!.cards, "done")
+          assert.equal(done[0]?.title, "Refined GPUI native host")
 
-          // Undo & Redo via @ui-sdk/core createUndoStack
-          assert.equal(root.model()!.canUndo, true)
+          // Undo & Redo via pure TEA BoardHistory in @folio/kanban-core
+          assert.equal(canUndoHistory(root.model()!.history), true)
           renderer.clickByTestId("board.undo")
           yield* Effect.promise(tick)
           assert.equal(
-            root.model()!.columns.find((c) => c.id === "done")!.cards[0]?.title ===
+            cardsInLane(root.model()!.cards, "done")[0]?.title ===
               "Refined GPUI native host",
             false
           )
-          assert.equal(root.model()!.canRedo, true)
+          assert.equal(canRedoHistory(root.model()!.history), true)
           renderer.clickByTestId("board.redo")
           yield* Effect.promise(tick)
           assert.equal(
-            root.model()!.columns.find((c) => c.id === "done")!.cards[0]?.title,
+            cardsInLane(root.model()!.cards, "done")[0]?.title,
             "Refined GPUI native host"
           )
         })

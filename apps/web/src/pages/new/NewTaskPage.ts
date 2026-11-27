@@ -1,8 +1,9 @@
 import { ArrowLeftIcon } from "#components/Icons"
 import {
   ColumnId,
-  COLUMNS,
+  LANES,
   NewTaskInput,
+  PRIORITY_OPTIONS,
   TaskPriority,
   TasksTag
 } from "#domain/Task"
@@ -16,6 +17,7 @@ import {
   Validation
 } from "@effect/ui"
 import { Html } from "@effect/ui/html"
+import { parseTags } from "@folio/kanban-core"
 import { Effect, Option, Schema } from "effect"
 import { AppRoute } from "../../routes.ts"
 
@@ -96,13 +98,6 @@ export class CreateTask extends Command.Service<CreateTask>()(
   )
 }
 
-const parseTags = (raw: string): ReadonlyArray<string> =>
-  raw
-    .split(",")
-    .map((part) => part.trim().toLowerCase().replace(/^#/, ""))
-    .filter((part) => part.length > 0)
-    .slice(0, 5)
-
 export const NewTaskPageNoDeps = Html.component({
   name: "NewTaskPage",
   props: Schema.Struct({ route: NewTaskRoute }),
@@ -156,7 +151,7 @@ export const NewTaskPageNoDeps = Html.component({
                   input: {
                     title: values.title,
                     notes: values.notes,
-                    column: values.column,
+                    lane: values.column,
                     priority: values.priority,
                     assignee: values.assignee.toUpperCase(),
                     points: Number(values.points),
@@ -230,13 +225,13 @@ export const NewTaskPageNoDeps = Html.component({
                   .value(fields.column.value)
                   .disabled(model.submitting)
                   .on("change", ({ value }) => {
-                    const match = COLUMNS.find((c) => c.id === value)
+                    const match = LANES.find((c) => c.id === value)
                     return match
                       ? NewTaskMessage.SelectedColumn({ column: match.id })
                       : undefined
                   })
                   .children(
-                    COLUMNS.map((col) =>
+                    LANES.map((col) =>
                       h.option.key(col.id).attr("value", col.id).children(col.title)
                     )
                   )
@@ -248,15 +243,16 @@ export const NewTaskPageNoDeps = Html.component({
                   .attr("id", "card-priority")
                   .value(fields.priority.value)
                   .disabled(model.submitting)
-                  .on("change", ({ value }) =>
-                    value === "high" || value === "medium" || value === "low"
-                      ? NewTaskMessage.SelectedPriority({ priority: value })
+                  .on("change", ({ value }) => {
+                    const match = PRIORITY_OPTIONS.find((p) => p.value === value)
+                    return match
+                      ? NewTaskMessage.SelectedPriority({ priority: match.value })
                       : undefined
-                  )
+                  })
                   .children(
-                    h.option.attr("value", "high").children("High"),
-                    h.option.attr("value", "medium").children("Medium"),
-                    h.option.attr("value", "low").children("Low")
+                    PRIORITY_OPTIONS.map((opt) =>
+                      h.option.key(opt.value).attr("value", opt.value).children(opt.label)
+                    )
                   )
               )
             ),

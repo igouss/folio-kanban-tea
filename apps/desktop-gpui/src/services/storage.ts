@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
+import { SavedBoardJson, type SavedBoardSchema as SavedBoard } from "@folio/kanban-core/schema"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Schema from "effect/Schema"
-import { SavedBoardJson, type SavedBoard } from "../domain/board.ts"
 
 export class BoardStorage extends Context.Service<BoardStorage, {
   readonly load: Effect.Effect<SavedBoard | undefined>

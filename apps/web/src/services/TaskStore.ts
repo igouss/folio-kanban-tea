@@ -1,8 +1,12 @@
 import {
   DEFAULT_CARDS,
+  createCard,
+  deleteCard,
+  findCard,
+  moveCard,
   nextCardCode,
-  normalizeAssignee,
-  type KanbanCard
+  saveCard,
+  validateCardTitle
 } from "@folio/kanban-core"
 import {
   type ColumnId,
@@ -13,22 +17,9 @@ import {
 } from "#domain/Task"
 import { Context, Effect, Layer, Schema } from "effect"
 
-const STORAGE_KEY = "folio.effect-ui.kanban.v2"
+const STORAGE_KEY = "folio.effect-ui.kanban.v3"
 
-const toTask = (card: KanbanCard): Task => ({
-  id: card.id,
-  key: card.code,
-  title: card.title,
-  notes: card.notes,
-  column: card.lane,
-  priority: card.priority,
-  assignee: card.assignee,
-  points: card.points,
-  tags: card.tags,
-  createdAt: card.createdAt
-})
-
-export const defaultSeedTasks: ReadonlyArray<Task> = DEFAULT_CARDS.map(toTask)
+export const defaultSeedTasks: ReadonlyArray<Task> = DEFAULT_CARDS
 
 const decodeTasks = Schema.decodeUnknownOption(Schema.Array(Task))
 
@@ -67,7 +58,7 @@ export class TaskStore extends Context.Service<TaskStore, {
     initial: ReadonlyArray<Task>,
     options: { readonly persist: boolean; readonly latencyMs: number }
   ) => {
-    let items: Array<Task> = [...initial]
+    let items: ReadonlyArray<Task> = [...initial]
 
     const syncPersist = () => {
       if (options.persist) writeToStorage(items)
@@ -83,7 +74,7 @@ export class TaskStore extends Context.Service<TaskStore, {
       get: (id) =>
         withDelay(
           Effect.suspend(() => {
-            const found = items.find((item) => item.id === id)
+            const found = findCard(items, id)
             return found === undefined
               ? Effect.fail(new TaskNotFound({ id }))
               : Effect.succeed(found)
@@ -92,30 +83,22 @@ export class TaskStore extends Context.Service<TaskStore, {
       create: (input) =>
         withDelay(
           Effect.suspend(() => {
-            const title = input.title.trim()
-            if (title.length < 3) {
+            const titleCheck = validateCardTitle(input.title, 3)
+            if (!titleCheck.ok) {
               return Effect.fail(
                 new TaskSaveError({
                   reason: "Card title must be at least 3 characters."
                 })
               )
             }
-            const code = nextCardCode(items.map((item) => ({ code: item.key })))
-            const created: Task = {
+            const code = nextCardCode(items)
+            const created = createCard(items, input, {
               id: `card-${code.toLowerCase()}`,
-              key: code,
-              title,
-              notes: input.notes.trim(),
-              column: input.column,
-              priority: input.priority,
-              assignee: normalizeAssignee(input.assignee),
-              points: input.points,
-              tags: input.tags,
               createdAt: new Date().toISOString()
-            }
-            items = [created, ...items]
+            })
+            items = created.cards
             syncPersist()
-            return Effect.succeed(created)
+            return Effect.succeed(created.card)
           })
         ),
       save: (task) =>
@@ -127,14 +110,21 @@ export class TaskStore extends Context.Service<TaskStore, {
                 new TaskSaveError({ reason: "A card cannot have an empty title." })
               )
             }
-            const exists = items.some((item) => item.id === task.id)
-            if (!exists) {
+            if (findCard(items, task.id) === undefined) {
               return Effect.fail(
-                new TaskSaveError({ reason: `Card ${task.key} no longer exists.` })
+                new TaskSaveError({ reason: `Card ${task.code} no longer exists.` })
               )
             }
-            const updated: Task = { ...task, title }
-            items = items.map((item) => (item.id === task.id ? updated : item))
+            items = saveCard(items, task.id, {
+              title,
+              notes: task.notes,
+              lane: task.lane,
+              priority: task.priority,
+              assignee: task.assignee,
+              points: task.points,
+              tags: task.tags
+            })
+            const updated = findCard(items, task.id) ?? { ...task, title }
             syncPersist()
             return Effect.succeed(updated)
           })
@@ -142,15 +132,15 @@ export class TaskStore extends Context.Service<TaskStore, {
       move: (id, column) =>
         withDelay(
           Effect.suspend(() => {
-            const existing = items.find((item) => item.id === id)
+            const existing = findCard(items, id)
             if (existing === undefined) {
               return Effect.fail(new TaskNotFound({ id }))
             }
-            if (existing.column === column) {
+            if (existing.lane === column) {
               return Effect.succeed(existing)
             }
-            const updated: Task = { ...existing, column }
-            items = [updated, ...items.filter((item) => item.id !== id)]
+            items = moveCard(items, id, column)
+            const updated = findCard(items, id) ?? { ...existing, lane: column }
             syncPersist()
             return Effect.succeed(updated)
           })
@@ -158,11 +148,10 @@ export class TaskStore extends Context.Service<TaskStore, {
       remove: (id) =>
         withDelay(
           Effect.suspend(() => {
-            const exists = items.some((item) => item.id === id)
-            if (!exists) {
+            if (findCard(items, id) === undefined) {
               return Effect.fail(new TaskNotFound({ id }))
             }
-            items = items.filter((item) => item.id !== id)
+            items = deleteCard(items, id)
             syncPersist()
             return Effect.void
           })

@@ -43,7 +43,7 @@ export class MoveCard extends Command.Service<MoveCard>()("folio/MoveCard", {
             onSuccess: (task) =>
               BoardPageMessage.SucceededMoveCard({
                 id: task.id,
-                column: task.column
+                column: task.lane
               }),
             onFailure: (error) =>
               BoardPageMessage.FailedMoveCard({
@@ -72,7 +72,7 @@ export class QuickCreateCard extends Command.Service<QuickCreateCard>()(
           .create({
             title,
             notes: "",
-            column,
+            lane: column,
             priority: "medium",
             assignee: "ME",
             points: 2,
@@ -83,7 +83,7 @@ export class QuickCreateCard extends Command.Service<QuickCreateCard>()(
               onSuccess: (task) =>
                 BoardPageMessage.SucceededQuickCreate({
                   title: task.title,
-                  column: task.column
+                  column: task.lane
                 }),
               onFailure: (error) =>
                 BoardPageMessage.FailedQuickCreate({ reason: error.reason })

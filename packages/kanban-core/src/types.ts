@@ -10,6 +10,34 @@ export type PriorityFilter = (typeof PRIORITY_FILTERS)[number]
 export const THEME_MODES = ['paper', 'graphite'] as const
 export type ThemeMode = (typeof THEME_MODES)[number]
 
+export const STORY_POINTS = [1, 2, 3, 5, 8, 13] as const
+export type StoryPoints = (typeof STORY_POINTS)[number]
+
+export interface PriorityOption {
+  readonly value: Priority
+  readonly label: string
+}
+
+export const PRIORITY_OPTIONS: ReadonlyArray<PriorityOption> = [
+  { value: 'high', label: 'High' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'low', label: 'Low' },
+]
+
+export interface PriorityFilterOption {
+  readonly value: PriorityFilter
+  readonly label: string
+  readonly shortLabel: string
+  readonly longLabel: string
+}
+
+export const PRIORITY_FILTER_OPTIONS: ReadonlyArray<PriorityFilterOption> = [
+  { value: 'all', label: 'All', shortLabel: 'All', longLabel: 'All priorities' },
+  { value: 'high', label: 'High', shortLabel: 'High', longLabel: 'High' },
+  { value: 'medium', label: 'Medium', shortLabel: 'Med', longLabel: 'Medium' },
+  { value: 'low', label: 'Low', shortLabel: 'Low', longLabel: 'Low' },
+]
+
 export interface LaneMeta {
   readonly id: LaneId
   readonly code: string
@@ -56,6 +84,27 @@ export interface CardPatch {
   readonly assignee?: string
   readonly points?: number
   readonly tags?: ReadonlyArray<string>
+}
+
+export interface CardDraft {
+  readonly cardId: string
+  readonly code: string
+  readonly title: string
+  readonly notes: string
+  readonly lane: LaneId
+  readonly priority: Priority
+  readonly assignee: string
+  readonly points: number
+}
+
+export interface SavedBoard {
+  readonly cards: ReadonlyArray<KanbanCard>
+  readonly theme: ThemeMode
+}
+
+export interface BoardHistoryState {
+  readonly past: ReadonlyArray<ReadonlyArray<KanbanCard>>
+  readonly future: ReadonlyArray<ReadonlyArray<KanbanCard>>
 }
 
 export interface LaneStats {

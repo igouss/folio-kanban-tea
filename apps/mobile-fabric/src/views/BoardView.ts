@@ -1,11 +1,6 @@
 import type { Fabric } from "@folio/effect-ui-fabric"
-import {
-  filterAndRankCards,
-  readProgress,
-  readSegmentedControl,
-  readTabs
-} from "@folio/effect-ui-sdk"
-import { LANES, type PriorityFilter } from "@folio/kanban-core"
+import { deriveBoardView } from "@folio/effect-ui-sdk"
+import { canRedoHistory, canUndoHistory } from "@folio/kanban-core"
 import { paletteFor, type FolioPalette as Palette } from "@folio/kanban-core/theme"
 import {
   KanbanMobileMessage as Msg,
@@ -14,56 +9,34 @@ import {
 } from "../domain/schema"
 import { cardRow } from "./CardRow"
 import { detailView } from "./DetailView"
-
-const PRIORITY_FILTERS: ReadonlyArray<{
-  readonly value: PriorityFilter
-  readonly label: string
-}> = [
-  { value: "all", label: "All" },
-  { value: "high", label: "High" },
-  { value: "medium", label: "Med" },
-  { value: "low", label: "Low" }
-]
+import { fabricSegmentedControl } from "./ui"
 
 const boardView = (
   h: Fabric.H<KanbanMobileMessage>,
   model: KanbanMobileModel,
   p: Palette
 ) => {
-  const activeLaneMeta = LANES.find((l) => l.id === model.activeLane)!
-  const laneAllCards = model.cards.filter((c) => c.lane === model.activeLane)
-  const visibleCards = filterAndRankCards(
-    laneAllCards,
-    model.searchQuery,
-    model.priorityFilter
-  )
-  const overWip =
-    activeLaneMeta.wipLimit !== null &&
-    laneAllCards.length > activeLaneMeta.wipLimit
-
-  const totalPoints = model.cards.reduce((sum, c) => sum + c.points, 0)
-  const donePoints = model.cards
-    .filter((c) => c.lane === "done")
-    .reduce((sum, c) => sum + c.points, 0)
-  const velocity = readProgress({
-    id: "mobile-board-velocity",
-    value: donePoints,
-    min: 0,
-    max: totalPoints,
-    ariaLabel: "Sprint velocity"
+  const board = deriveBoardView({
+    idPrefix: "mobile",
+    cards: model.cards,
+    searchQuery: model.searchQuery,
+    priorityFilter: model.priorityFilter,
+    priorityLabelStyle: "short",
+    activeLane: model.activeLane
   })
-  const laneTabs = readTabs({
-    id: "mobile-lane-tabs",
-    value: model.activeLane,
-    ariaLabel: "Kanban lanes",
-    items: LANES.map((lane) => ({ value: lane.id, label: lane.shortTitle }))
-  })
-  const priorityControl = readSegmentedControl({
-    id: "mobile-priority-filter",
-    value: model.priorityFilter,
-    ariaLabel: "Filter by priority",
-    items: PRIORITY_FILTERS
-  })
+  const {
+    activeLane,
+    lanes,
+    laneTabs,
+    priorityControl,
+    progress: velocity,
+    velocity: stats
+  } = board
+  const activeLaneMeta = activeLane.lane
+  const visibleCards = activeLane.visibleCards
+  const overWip = activeLane.stats.overWip
+  const canUndo = canUndoHistory(model.history)
+  const canRedo = canRedoHistory(model.history)
 
   return h.view
     .style({ flex: 1 })
@@ -147,12 +120,12 @@ const boardView = (
                 .testID("board.velocity")
                 .style({ fontSize: 12, color: p.inkMuted })
                 .children(
-                  `${model.cards.length} cards · ${donePoints}/${totalPoints}pt done (${velocity.text})`
+                  `${stats.totalCards} cards · ${stats.donePoints}/${stats.totalPoints}pt done (${velocity.text})`
                 ),
               h.view
                 .style({ flexDirection: "row", alignItems: "center", gap: 12 })
                 .children(
-                  model.canUndo &&
+                  canUndo &&
                     h.pressable
                       .testID("board.undo")
                       .accessibilityLabel("Undo last board change")
@@ -166,7 +139,7 @@ const boardView = (
                           })
                           .children("Undo")
                       ),
-                  model.canRedo &&
+                  canRedo &&
                     h.pressable
                       .testID("board.redo")
                       .accessibilityLabel("Redo board change")
@@ -210,66 +183,65 @@ const boardView = (
               })
             )
         ),
-      h.view
-        .accessibilityLabel(laneTabs.listAttrs["aria-label"] ?? "Kanban lanes")
-        .style({
-          flexDirection: "row",
-          paddingHorizontal: 14,
-          paddingVertical: 10,
-          gap: 6,
-          backgroundColor: p.surfaceAlt,
-          borderBottomWidth: 1,
-          borderBottomColor: p.border
-        })
-        .children(
-          laneTabs.items.map((tab) => {
-            const lane = LANES.find((l) => l.id === tab.value)!
-            const count = model.cards.filter((c) => c.lane === lane.id).length
-            const isActive = tab.selected
-            const laneOver = lane.wipLimit !== null && count > lane.wipLimit
-            return h.pressable
-              .key(lane.id)
-              .testID(`lane.tab.${lane.id}`)
-              .accessibilityLabel(`${lane.title} lane, ${count} cards`)
-              .on("press", Msg.SelectedLane({ lane: lane.id }))
-              .style({
-                flex: 1,
-                paddingVertical: 8,
-                paddingHorizontal: 6,
-                borderRadius: 8,
-                alignItems: "center",
-                backgroundColor: isActive ? p.ink : p.surface,
-                borderWidth: 1,
-                borderColor: laneOver
-                  ? p.accent
-                  : isActive
-                    ? p.ink
-                    : p.border
-              })
-              .children(
-                h.text
-                  .style({
-                    fontSize: 12,
-                    fontWeight: "700",
-                    color: isActive ? p.surface : p.ink
-                  })
-                  .children(tab.label),
-                h.text
-                  .style({
-                    fontSize: 11,
-                    fontWeight: "600",
-                    color: laneOver
-                      ? p.accent
-                      : isActive
-                        ? p.chip
-                        : p.inkMuted
-                  })
-                  .children(
-                    lane.wipLimit !== null ? `${count}/${lane.wipLimit}` : `${count}`
-                  )
-              )
+      laneTabs !== undefined &&
+        h.view
+          .accessibilityLabel(laneTabs.listAttrs["aria-label"] ?? "Kanban lanes")
+          .style({
+            flexDirection: "row",
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            gap: 6,
+            backgroundColor: p.surfaceAlt,
+            borderBottomWidth: 1,
+            borderBottomColor: p.border
           })
-        ),
+          .children(
+            laneTabs.items.map((tab) => {
+              const entry = lanes.find((l) => l.lane.id === tab.value)!
+              const { lane, stats: lStats, wipText } = entry
+              const isActive = tab.selected
+              const laneOver = lStats.overWip
+              return h.pressable
+                .key(lane.id)
+                .testID(`lane.tab.${lane.id}`)
+                .accessibilityLabel(`${lane.title} lane, ${lStats.count} cards`)
+                .on("press", Msg.SelectedLane({ lane: lane.id }))
+                .style({
+                  flex: 1,
+                  paddingVertical: 8,
+                  paddingHorizontal: 6,
+                  borderRadius: 8,
+                  alignItems: "center",
+                  backgroundColor: isActive ? p.ink : p.surface,
+                  borderWidth: 1,
+                  borderColor: laneOver
+                    ? p.accent
+                    : isActive
+                      ? p.ink
+                      : p.border
+                })
+                .children(
+                  h.text
+                    .style({
+                      fontSize: 12,
+                      fontWeight: "700",
+                      color: isActive ? p.surface : p.ink
+                    })
+                    .children(tab.label),
+                  h.text
+                    .style({
+                      fontSize: 11,
+                      fontWeight: "600",
+                      color: laneOver
+                        ? p.accent
+                        : isActive
+                          ? p.chip
+                          : p.inkMuted
+                    })
+                    .children(wipText)
+                )
+            })
+          ),
       h.view
         .style({
           paddingHorizontal: 16,
@@ -296,38 +268,14 @@ const boardView = (
               backgroundColor: p.surface,
               color: p.ink
             }),
-          h.view
-            .accessibilityLabel(
-              priorityControl.rootAttrs["aria-label"] ?? "Filter by priority"
-            )
-            .style({ flexDirection: "row", gap: 6 })
-            .children(
-              priorityControl.items.map((opt) =>
-                h.pressable
-                  .key(opt.value)
-                  .testID(`filter.${opt.value}`)
-                  .accessibilityLabel(`${opt.label} priority`)
-                  .on("press", Msg.SelectedPriorityFilter({ priority: opt.value }))
-                  .style({
-                    flex: 1,
-                    paddingVertical: 6,
-                    borderRadius: 6,
-                    alignItems: "center",
-                    backgroundColor: opt.checked ? p.accent : p.surface,
-                    borderWidth: 1,
-                    borderColor: opt.checked ? p.accent : p.border
-                  })
-                  .children(
-                    h.text
-                      .style({
-                        fontSize: 12,
-                        fontWeight: "700",
-                        color: opt.checked ? p.accentInk : p.inkSoft
-                      })
-                      .children(opt.label)
-                  )
-              )
-            )
+          fabricSegmentedControl(h, priorityControl, p, {
+            testIdPrefix: "filter",
+            tone: "accent",
+            paddingVertical: 6,
+            borderRadius: 6,
+            itemAccessibilityLabel: (label) => `${label} priority`,
+            onSelect: (priority) => Msg.SelectedPriorityFilter({ priority })
+          })
         ),
       h.view
         .style({
@@ -388,12 +336,13 @@ const boardView = (
             h.text
               .style({ fontSize: 12, fontWeight: "700", color: p.accent })
               .children(
-                `WIP limit exceeded in ${activeLaneMeta.title} (${laneAllCards.length}/${activeLaneMeta.wipLimit})`
+                `WIP limit exceeded in ${activeLaneMeta.title} (${activeLane.wipText})`
               )
           ),
       model.statusBanner.length > 0 &&
         h.pressable
           .testID("status.banner")
+          .accessibilityLabel(model.statusAnnouncement || model.statusBanner)
           .on("press", Msg.DismissedBanner())
           .style({
             marginHorizontal: 16,
@@ -416,6 +365,7 @@ const boardView = (
           ),
       h.scrollView
         .testID("board.scroll")
+        .accessibilityLabel(activeLane.laneAttrs["aria-label"] ?? activeLaneMeta.title)
         .style({ flex: 1, paddingHorizontal: 16 })
         .children(
           h.view

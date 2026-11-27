@@ -1,6 +1,7 @@
 import {
   LANES,
   type BoardVelocity,
+  type CardDraft,
   type CardPatch,
   type KanbanCard,
   type LaneId,
@@ -9,6 +10,7 @@ import {
   type NewCardInput,
   type Priority,
   type PriorityFilter,
+  type ThemeMode,
 } from './types.ts'
 
 export const laneMeta = (id: LaneId): LaneMeta =>
@@ -40,6 +42,15 @@ export const priorityLabel = (priority: Priority): string => {
 export const priorityBadge = (priority: Priority): string =>
   priority === 'high' ? 'HIGH' : priority === 'medium' ? 'MED' : 'LOW'
 
+export const toggleTheme = (theme: ThemeMode): ThemeMode =>
+  theme === 'paper' ? 'graphite' : 'paper'
+
+export const themeLabel = (theme: ThemeMode): string =>
+  theme === 'paper' ? 'Paper (Light)' : 'Graphite (Dark)'
+
+export const formatWipCount = (count: number, wipLimit: number | null): string =>
+  wipLimit !== null ? `${count}/${wipLimit}` : `${count}`
+
 export const nextCardCode = (
   cards: ReadonlyArray<{ readonly code: string }>,
 ): string => {
@@ -59,6 +70,86 @@ export const parseTags = (raw: string): ReadonlyArray<string> =>
 
 export const normalizeAssignee = (raw: string): string =>
   raw.trim().toUpperCase().slice(0, 3) || 'ME'
+
+export const normalizeDraftAssignee = (raw: string): string =>
+  raw.toUpperCase().slice(0, 3)
+
+export const validateCardTitle = (
+  raw: string,
+  minLength = 2,
+): { readonly ok: true; readonly title: string } | { readonly ok: false; readonly error: string } => {
+  const title = raw.trim()
+  if (title.length < minLength) {
+    return {
+      ok: false,
+      error: `Title must be at least ${minLength} characters.`,
+    }
+  }
+  return { ok: true, title }
+}
+
+export const findCard = <T extends { readonly id: string }>(
+  cards: ReadonlyArray<T>,
+  cardId: string,
+): T | undefined => cards.find((card) => card.id === cardId)
+
+export const cardsInLane = <T extends { readonly lane: LaneId }>(
+  cards: ReadonlyArray<T>,
+  laneId: LaneId,
+): ReadonlyArray<T> => cards.filter((card) => card.lane === laneId)
+
+export const groupCardIdsByLane = (
+  cards: ReadonlyArray<Pick<KanbanCard, 'id' | 'lane'>>,
+): Record<LaneId, Array<string>> => {
+  const lists: Record<LaneId, Array<string>> = {
+    backlog: [],
+    in_progress: [],
+    review: [],
+    done: [],
+  }
+  for (const card of cards) {
+    lists[card.lane].push(card.id)
+  }
+  return lists
+}
+
+export const wipLimitsByLane = (): Record<LaneId, number | null> => ({
+  backlog: laneMeta('backlog').wipLimit,
+  in_progress: laneMeta('in_progress').wipLimit,
+  review: laneMeta('review').wipLimit,
+  done: laneMeta('done').wipLimit,
+})
+
+export const cardToDraft = (card: KanbanCard): CardDraft => ({
+  cardId: card.id,
+  code: card.code,
+  title: card.title,
+  notes: card.notes,
+  lane: card.lane,
+  priority: card.priority,
+  assignee: card.assignee,
+  points: card.points,
+})
+
+export const draftToPatch = (draft: CardDraft): CardPatch => ({
+  title: draft.title,
+  notes: draft.notes,
+  lane: draft.lane,
+  priority: draft.priority,
+  assignee: draft.assignee,
+  points: draft.points,
+})
+
+export const isCardDirty = (
+  draft: Pick<KanbanCard, 'title' | 'notes' | 'lane' | 'priority' | 'assignee' | 'points'>,
+  saved: Pick<KanbanCard, 'title' | 'notes' | 'lane' | 'priority' | 'assignee' | 'points'>,
+): boolean =>
+  draft.title !== saved.title ||
+  draft.notes !== saved.notes ||
+  draft.lane !== saved.lane ||
+  draft.priority !== saved.priority ||
+  draft.assignee !== saved.assignee ||
+  draft.points !== saved.points
 
 export const matchesCard = (
   card: Pick<KanbanCard, 'code' | 'title' | 'notes' | 'priority' | 'assignee' | 'tags'>,
@@ -167,6 +258,22 @@ export const updateCard = (
           ...(patch.tags !== undefined ? { tags: patch.tags } : {}),
         },
   )
+
+export const saveCard = (
+  cards: ReadonlyArray<KanbanCard>,
+  cardId: string,
+  patch: CardPatch,
+): ReadonlyArray<KanbanCard> => {
+  const existing = cards.find((card) => card.id === cardId)
+  if (existing === undefined) return cards
+  const updatedList = updateCard(cards, cardId, patch)
+  if (patch.lane === undefined || patch.lane === existing.lane) {
+    return updatedList
+  }
+  const updated = updatedList.find((card) => card.id === cardId)
+  if (updated === undefined) return updatedList
+  return [updated, ...updatedList.filter((card) => card.id !== cardId)]
+}
 
 export const deleteCard = (
   cards: ReadonlyArray<KanbanCard>,

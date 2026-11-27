@@ -2,13 +2,17 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import { agentTools } from "@ui-sdk/core/agent"
 import { attrs, partState, press } from "@ui-sdk/core/renderer"
+import { DEFAULT_CARDS } from "@folio/kanban-core"
 import {
   createBoardHistory,
+  deriveBoardView,
+  deriveCardEditorControls,
   filterAndRankCards,
   formatTransferNotice,
   highlightText,
   kanbanBoard,
   nextSegmentedValue,
+  readKanbanBoard,
   readProgress,
   readSegmentedControl,
   readTabs,
@@ -270,5 +274,51 @@ describe("@folio/effect-ui-sdk kanbanBoard primitive & history", () => {
     })
     assert.match(msg, /GPUI Host/)
     assert.match(msg, /In Review/)
+  })
+
+  it("derives unified board view-model and editor controls across platforms", () => {
+    const boardSnap = readKanbanBoard({
+      id: "snap-board",
+      label: "Folio Kanban",
+      lists: { backlog: ["card-105"], done: ["card-102"] },
+      lanes: [
+        { id: "backlog", label: "Backlog column" },
+        { id: "done", label: "Done column" }
+      ],
+      cards: [{ id: "card-105", lane: "backlog" }],
+      wipLimits: { backlog: null, done: null }
+    })
+    assert.equal(boardSnap.rootAttrs.role, "region")
+    assert.equal(boardSnap.lanes["backlog"]?.attrs.role, "list")
+    assert.equal(boardSnap.lanes["backlog"]?.count, 1)
+    assert.equal(boardSnap.cards["card-105"]?.attrs.role, "listitem")
+
+    const view = deriveBoardView({
+      idPrefix: "test",
+      cards: DEFAULT_CARDS,
+      searchQuery: "TEA",
+      priorityFilter: "high",
+      priorityLabelStyle: "short",
+      activeLane: "in_progress"
+    })
+    assert.equal(view.velocity.totalCards, DEFAULT_CARDS.length)
+    assert.equal(view.progress.rootAttrs.role, "progressbar")
+    assert.equal(view.priorityControl.rootAttrs.role, "radiogroup")
+    assert.equal(view.board.rootAttrs.role, "region")
+    assert.equal(view.lanes.length, 4)
+    assert.equal(view.laneTabs?.listAttrs.role, "tablist")
+    assert.equal(view.activeLane.lane.id, "in_progress")
+    assert.ok(view.activeLane.visibleCards.length >= 1)
+
+    const editor = deriveCardEditorControls({
+      idPrefix: "test",
+      lane: "review",
+      priority: "high",
+      points: 5
+    })
+    assert.equal(editor.laneControl.value, "review")
+    assert.equal(editor.priorityControl.value, "high")
+    assert.equal(editor.pointsControl.value, "5")
+    assert.equal(editor.pointsControl.items.length, 6)
   })
 })

@@ -1,5 +1,7 @@
 import { UiSchema } from "@effect/ui"
 import {
+  BoardHistorySchema,
+  CardDraftSchema as EditDraft,
   KanbanCardSchema as Card,
   LaneId,
   Priority,
@@ -8,19 +10,7 @@ import {
 } from "@folio/kanban-core/schema"
 import { Schema } from "effect"
 
-export { Card, LaneId, Priority, PriorityFilter, ThemeMode }
-
-export const EditDraft = Schema.Struct({
-  cardId: Schema.String,
-  code: Schema.String,
-  title: Schema.String,
-  notes: Schema.String,
-  lane: LaneId,
-  priority: Priority,
-  assignee: Schema.String,
-  points: Schema.Number
-})
-export type EditDraft = typeof EditDraft.Type
+export { Card, EditDraft, LaneId, Priority, PriorityFilter, ThemeMode }
 
 export const Screen = Schema.Union([
   Schema.Struct({ _tag: Schema.Literal("Board") }),
@@ -30,6 +20,7 @@ export type Screen = typeof Screen.Type
 
 export const KanbanMobileModel = Schema.Struct({
   cards: Schema.Array(Card),
+  history: BoardHistorySchema,
   activeLane: LaneId,
   screen: Screen,
   searchQuery: Schema.String,
@@ -40,8 +31,7 @@ export const KanbanMobileModel = Schema.Struct({
   isBackgrounded: Schema.Boolean,
   backgroundTrips: Schema.Number,
   statusBanner: Schema.String,
-  canUndo: Schema.Boolean,
-  canRedo: Schema.Boolean,
+  statusAnnouncement: Schema.String,
   nextId: Schema.Number
 })
 export type KanbanMobileModel = typeof KanbanMobileModel.Type

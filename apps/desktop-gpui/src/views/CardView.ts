@@ -1,31 +1,21 @@
 import type { Gpui } from "@folio/effect-ui-gpui"
+import { adjacentLanes, type KanbanCard } from "@folio/kanban-core"
 import { priorityColors, type FolioPalette as Palette } from "@folio/kanban-core/theme"
-import type {
-  KanbanDesktopMessage,
-  KanbanDesktopModel
-} from "../components/KanbanDesktop.ts"
+import type { KanbanDesktopMessage } from "../components/KanbanDesktop.ts"
 import { KanbanDesktopMessage as Msg } from "../components/KanbanDesktop.ts"
-import type { Card } from "../domain/board.ts"
 
 export const cardView = (
   h: Gpui.H<KanbanDesktopMessage>,
-  model: KanbanDesktopModel,
-  card: Card,
-  columnId: string,
-  columnIndex: number,
+  card: KanbanCard,
   p: Palette
 ) => {
   const prio = priorityColors(card.priority, p)
-  const prevColumnId =
-    columnIndex > 0 ? model.columns[columnIndex - 1]?.id : undefined
-  const nextColumnId =
-    columnIndex < model.columns.length - 1
-      ? model.columns[columnIndex + 1]?.id
-      : undefined
+  const { prev, next } = adjacentLanes(card.lane)
 
   return h.box
     .key(card.id)
     .testId(`card.${card.id}`)
+    .role("listitem")
     .style({
       display: "flex",
       flexDirection: "column",
@@ -96,7 +86,7 @@ export const cardView = (
               gap: 3
             })
             .children(
-              prevColumnId !== undefined &&
+              prev !== undefined &&
                 h.button
                   .testId(`card.prev.${card.id}`)
                   .ariaLabel(`Move ${card.title} left`)
@@ -117,16 +107,9 @@ export const cardView = (
                     borderColor: p.rule,
                     color: p.ink
                   })
-                  .on(
-                    "click",
-                    Msg.ClickedMoveCard({
-                      cardId: card.id,
-                      fromColumnId: columnId,
-                      toColumnId: prevColumnId
-                    })
-                  )
+                  .on("click", Msg.ClickedMoveCard({ cardId: card.id, toLane: prev }))
                   .children("<"),
-              nextColumnId !== undefined &&
+              next !== undefined &&
                 h.button
                   .testId(`card.next.${card.id}`)
                   .ariaLabel(`Move ${card.title} right`)
@@ -147,14 +130,7 @@ export const cardView = (
                     borderColor: p.rule,
                     color: p.ink
                   })
-                  .on(
-                    "click",
-                    Msg.ClickedMoveCard({
-                      cardId: card.id,
-                      fromColumnId: columnId,
-                      toColumnId: nextColumnId
-                    })
-                  )
+                  .on("click", Msg.ClickedMoveCard({ cardId: card.id, toLane: next }))
                   .children(">"),
               h.button
                 .testId(`card.delete.${card.id}`)
@@ -175,10 +151,7 @@ export const cardView = (
                   backgroundColor: p.accentSoft,
                   color: p.accent
                 })
-                .on(
-                  "click",
-                  Msg.ClickedDeleteCard({ cardId: card.id, columnId })
-                )
+                .on("click", Msg.ClickedDeleteCard({ cardId: card.id }))
                 .children("x")
             )
         ),
