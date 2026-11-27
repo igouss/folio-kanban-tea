@@ -4,9 +4,13 @@ import {
   FolioApp,
   kanbanCommandsLayer,
   keyValueBoardRepositoryLayer,
-  loadFolioProps
+  loadFolioProps,
+  selectCanRedo,
+  selectCanUndo,
+  selectCards,
+  selectTheme
 } from "@folio/kanban-app"
-import { canRedoHistory, canUndoHistory, cardsInLane } from "@folio/kanban-domain"
+import { cardsInLane } from "@folio/kanban-domain"
 import { WebHost } from "@universal-ui/host-web"
 import { createFakeDom } from "@universal-ui/host-web/testing"
 import {
@@ -79,7 +83,7 @@ describe("Folio Kanban Web (@folio/kanban-app on @universal-ui/host-web)", () =>
           yield* Effect.promise(() =>
             waitFor(() => store.getRaw(storageKey) !== undefined)
           )
-          assert.equal(cardsInLane(root.model()!.cards, "review")[0]?.id, "card-101")
+          assert.equal(cardsInLane(selectCards(root.model()!), "review")[0]?.id, "card-101")
 
           // Toggle Paper -> Graphite theme
           const themeBtn = dom.findByTestId("theme.toggle")
@@ -88,7 +92,7 @@ describe("Folio Kanban Web (@folio/kanban-app on @universal-ui/host-web)", () =>
           yield* Effect.promise(() =>
             waitFor(() => store.getRaw(storageKey)?.includes('"graphite"') === true)
           )
-          assert.equal(root.model()!.theme, "graphite")
+          assert.equal(selectTheme(root.model()!), "graphite")
 
           // Open MVU Trace inspector
           const inspectorBtn = dom.findByTestId("board.inspector")
@@ -106,22 +110,22 @@ describe("Folio Kanban Web (@folio/kanban-app on @universal-ui/host-web)", () =>
           yield* Effect.promise(tick)
           quickInput.dispatch("keydown", { key: "Enter" })
           yield* Effect.promise(() =>
-            waitFor(() => root.model()!.cards.length === 9)
+            waitFor(() => selectCards(root.model()!).length === 9)
           )
 
-          assert.equal(root.model()!.cards.length, 9)
-          assert.equal(root.model()!.cards[0]?.id, "web-card-1")
+          assert.equal(selectCards(root.model()!).length, 9)
+          assert.equal(selectCards(root.model()!)[0]?.id, "web-card-1")
           assert.ok(dom.doc.title.includes("9 cards"))
 
           // Undo & Redo
-          assert.equal(canUndoHistory(root.model()!.history), true)
+          assert.equal(selectCanUndo(root.model()!), true)
           dom.findByTestId("board.undo")!.dispatch("click")
           yield* Effect.promise(tick)
-          assert.equal(root.model()!.cards.length, 8)
-          assert.equal(canRedoHistory(root.model()!.history), true)
+          assert.equal(selectCards(root.model()!).length, 8)
+          assert.equal(selectCanRedo(root.model()!), true)
           dom.findByTestId("board.redo")!.dispatch("click")
           yield* Effect.promise(tick)
-          assert.equal(root.model()!.cards.length, 9)
+          assert.equal(selectCards(root.model()!).length, 9)
         })
       ).pipe(Effect.provide(appLayer))
     )

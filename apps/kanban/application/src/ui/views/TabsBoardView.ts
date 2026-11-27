@@ -1,11 +1,10 @@
-import { canRedoHistory, canUndoHistory } from "@folio/kanban-domain"
 import type { Ui } from "@universal-ui/core"
 import { deriveBoardView } from "../../presentation/index.ts"
+import type { BoardScreenSnapshot } from "../../state/index.ts"
 import type { FolioPalette as Palette } from "../theme.ts"
 import {
   FolioAppMessage as Msg,
   type FolioAppMessage,
-  type FolioAppModel,
   type FolioAppProps
 } from "../FolioApp.ts"
 import { cardItem } from "./CardItem.ts"
@@ -13,16 +12,16 @@ import { pillBadge, secondaryButtonStyle, segmentedControl } from "./controls.ts
 
 export const tabsBoardView = (
   h: Ui.H<FolioAppMessage, FolioAppProps>,
-  model: FolioAppModel,
+  screen: BoardScreenSnapshot,
   p: Palette
 ) => {
   const board = deriveBoardView({
     idPrefix: "folio",
-    cards: model.cards,
-    searchQuery: model.searchQuery,
-    priorityFilter: model.priorityFilter,
+    cards: screen.cards,
+    searchQuery: screen.searchQuery,
+    priorityFilter: screen.priorityFilter,
     priorityLabelStyle: "short",
-    activeLane: model.activeLane
+    activeLane: screen.activeLane
   })
   const {
     activeLane,
@@ -35,8 +34,7 @@ export const tabsBoardView = (
   const activeLaneMeta = activeLane.lane
   const visibleCards = activeLane.visibleCards
   const overWip = activeLane.stats.overWip
-  const canUndo = canUndoHistory(model.history)
-  const canRedo = canRedoHistory(model.history)
+  const { canUndo, canRedo } = screen
 
   return h.box
     .style({ flex: 1, flexDirection: "column" })
@@ -76,9 +74,7 @@ export const tabsBoardView = (
                 .children(
                   pillBadge(
                     h,
-                    model.backgroundTrips > 0
-                      ? `@effect/ui · ${model.appState} (${model.backgroundTrips})`
-                      : `@effect/ui · ${model.appState}`,
+                    screen.lifecycleBadge,
                     { bg: p.pineSoft, fg: p.pine },
                     "lifecycle.badge"
                   ),
@@ -90,7 +86,7 @@ export const tabsBoardView = (
                     .children(
                       h.text
                         .style({ fontSize: 11.5, fontWeight: "700", color: p.ink })
-                        .children(model.theme === "paper" ? "Dark" : "Light")
+                        .children(screen.theme === "paper" ? "Dark" : "Light")
                     )
                 )
             ),
@@ -241,7 +237,7 @@ export const tabsBoardView = (
           h.input
             .testId("board.search")
             .ariaLabel("Search cards")
-            .value(model.searchQuery)
+            .value(screen.searchQuery)
             .placeholder("Filter cards by title, #tag, code...")
             .autoCorrect(false)
             .autoCapitalize("none")
@@ -258,7 +254,7 @@ export const tabsBoardView = (
             }),
           segmentedControl(h, priorityControl, p, {
             testIdPrefix: "filter",
-            current: model.priorityFilter,
+            current: screen.priorityFilter,
             tone: "accent",
             stretch: true,
             itemAriaLabel: (label) => `${label} priority`,
@@ -277,7 +273,7 @@ export const tabsBoardView = (
           h.input
             .testId("quick.input")
             .ariaLabel(`New card in ${activeLaneMeta.title}`)
-            .value(model.quickTitle)
+            .value(screen.quickTitle)
             .placeholder(`Quick add to ${activeLaneMeta.title}...`)
             .autoCorrect(true)
             .autoCapitalize("sentences")
@@ -331,10 +327,10 @@ export const tabsBoardView = (
               )
           ),
       // Notice banner
-      model.notice.length > 0 &&
+      screen.notice.length > 0 &&
         h.button
           .testId("board.notice")
-          .ariaLabel(model.statusAnnouncement || model.notice)
+          .ariaLabel(screen.statusAnnouncement || screen.notice)
           .on("press", Msg.DismissedNotice())
           .style({
             marginHorizontal: 16,
@@ -350,7 +346,7 @@ export const tabsBoardView = (
           .children(
             h.text
               .style({ fontSize: 12, fontWeight: "600", color: p.pine })
-              .children(model.notice),
+              .children(screen.notice),
             h.text
               .style({ fontSize: 11, fontWeight: "700", color: p.pine })
               .children("OK")
@@ -384,7 +380,7 @@ export const tabsBoardView = (
                 : visibleCards.map((card) =>
                     cardItem(h, card, p, {
                       compact: false,
-                      searchQuery: model.searchQuery,
+                      searchQuery: screen.searchQuery,
                       isTabsLayout: true
                     })
                   )

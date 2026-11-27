@@ -1,12 +1,3 @@
-export {
-  CardDensity,
-  FolioApp,
-  FolioAppMessage,
-  FolioAppModel,
-  FolioAppProps,
-  loadFolioProps,
-  type FolioBootstrapConfig
-} from "./ui/FolioApp.ts"
 export { keyValueBoardRepositoryLayer } from "./adapters/index.ts"
 export {
   MintCardMeta,
@@ -38,6 +29,42 @@ export {
   type ReadKanbanBoardOptions,
   type SearchableCard
 } from "./presentation/index.ts"
+export {
+  COMPACT_BREAKPOINT_PX,
+  CardDensity,
+  KanbanStateSchema,
+  initialState,
+  reduce,
+  selectActiveLane,
+  selectBackgroundTrips,
+  selectBoardScreen,
+  selectCanRedo,
+  selectCanUndo,
+  selectCards,
+  selectDensity,
+  selectDispatchCount,
+  selectDocumentTitle,
+  selectInspectorOpen,
+  selectLifecycle,
+  selectNotice,
+  selectTheme,
+  selectViewport,
+  type AppEffect,
+  type BoardScreenSnapshot,
+  type InitialStateParams,
+  type KanbanAction,
+  type KanbanState,
+  type ReduceContext,
+  type ReduceResult,
+  type ScreenLayout
+} from "./state/index.ts"
+export {
+  FolioApp,
+  FolioAppMessage,
+  FolioAppProps,
+  loadFolioProps,
+  type FolioBootstrapConfig
+} from "./ui/FolioApp.ts"
 export {
   GRAPHITE_PALETTE,
   PAPER_PALETTE,

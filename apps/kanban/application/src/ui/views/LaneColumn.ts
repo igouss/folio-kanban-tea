@@ -1,11 +1,10 @@
 import type { Ui } from "@universal-ui/core"
-import { Option } from "effect"
 import type { LaneViewSnapshot } from "../../presentation/index.ts"
+import type { BoardScreenSnapshot } from "../../state/index.ts"
 import type { FolioPalette as Palette } from "../theme.ts"
 import {
   FolioAppMessage as Msg,
   type FolioAppMessage,
-  type FolioAppModel,
   type FolioAppProps
 } from "../FolioApp.ts"
 import { cardItem } from "./CardItem.ts"
@@ -13,14 +12,13 @@ import { pillBadge, secondaryButtonStyle } from "./controls.ts"
 
 export const laneColumn = (
   h: Ui.H<FolioAppMessage, FolioAppProps>,
-  model: FolioAppModel,
+  screen: BoardScreenSnapshot,
   entry: LaneViewSnapshot,
   p: Palette
 ) => {
   const { lane, stats, visibleCards, wipText, laneAttrs } = entry
   const overWip = stats.overWip
-  const isAdding =
-    Option.isSome(model.composingLane) && model.composingLane.value === lane.id
+  const isAdding = screen.composingLane === lane.id
 
   return h.box
     .key(lane.id)
@@ -113,7 +111,7 @@ export const laneColumn = (
             h.input
               .testId("quick.input")
               .ariaLabel(`New card title in ${lane.title}`)
-              .value(model.quickTitle)
+              .value(screen.quickTitle)
               .placeholder(`New card in ${lane.title}...`)
               .autoFocus(true)
               .style({
@@ -197,8 +195,8 @@ export const laneColumn = (
                     )
                 : visibleCards.map((card) =>
                     cardItem(h, card, p, {
-                      compact: model.density === "compact",
-                      searchQuery: model.searchQuery,
+                      compact: screen.density === "compact",
+                      searchQuery: screen.searchQuery,
                       isTabsLayout: false
                     })
                   )

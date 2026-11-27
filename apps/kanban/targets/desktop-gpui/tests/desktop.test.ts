@@ -4,9 +4,14 @@ import {
   FolioApp,
   kanbanCommandsLayer,
   keyValueBoardRepositoryLayer,
-  loadFolioProps
+  loadFolioProps,
+  selectCanRedo,
+  selectCanUndo,
+  selectCards,
+  selectDispatchCount,
+  selectTheme
 } from "@folio/kanban-app"
-import { canRedoHistory, canUndoHistory, cardsInLane } from "@folio/kanban-domain"
+import { cardsInLane } from "@folio/kanban-domain"
 import { GpuiHost } from "@universal-ui/host-gpui"
 import { createFakeGpuixRenderer } from "@universal-ui/host-gpui/testing"
 import {
@@ -73,21 +78,21 @@ describe("Folio Kanban Desktop (@folio/kanban-app on @universal-ui/host-gpui)", 
           )
 
           const afterMove = root.model()!
-          const inProgress = cardsInLane(afterMove.cards, "in_progress")
-          const review = cardsInLane(afterMove.cards, "review")
+          const inProgress = cardsInLane(selectCards(afterMove), "in_progress")
+          const review = cardsInLane(selectCards(afterMove), "review")
           assert.equal(
             inProgress.some((c) => c.id === "card-101"),
             false
           )
           assert.equal(review[0]?.id, "card-101")
-          assert.equal(afterMove.dispatchCount, 1)
+          assert.equal(selectDispatchCount(afterMove), 1)
 
           // Toggle Paper -> Graphite theme
           renderer.clickByTestId("theme.toggle")
           yield* Effect.promise(() =>
             waitFor(() => store.getRaw(storageKey)?.includes('"graphite"') === true)
           )
-          assert.equal(root.model()!.theme, "graphite")
+          assert.equal(selectTheme(root.model()!), "graphite")
 
           // Quick-add a card to Backlog via native GPUI input + submit
           renderer.clickByTestId("lane.add.backlog")
@@ -96,10 +101,10 @@ describe("Folio Kanban Desktop (@folio/kanban-app on @universal-ui/host-gpui)", 
           yield* Effect.promise(tick)
           renderer.submitByTestId("quick.input", "Ship @effect/ui on Zed GPUI")
           yield* Effect.promise(() =>
-            waitFor(() => root.model()!.cards.length === 9)
+            waitFor(() => selectCards(root.model()!).length === 9)
           )
 
-          const backlog = cardsInLane(root.model()!.cards, "backlog")
+          const backlog = cardsInLane(selectCards(root.model()!), "backlog")
           const created = backlog.find(
             (c) => c.title === "Ship @effect/ui on Zed GPUI"
           )
@@ -128,23 +133,23 @@ describe("Folio Kanban Desktop (@folio/kanban-app on @universal-ui/host-gpui)", 
           yield* Effect.promise(tick)
 
           assert.equal(renderer.findByTestId("editor.view"), undefined)
-          const done = cardsInLane(root.model()!.cards, "done")
+          const done = cardsInLane(selectCards(root.model()!), "done")
           assert.equal(done[0]?.title, "Refined GPUI native host")
 
           // Undo & Redo
-          assert.equal(canUndoHistory(root.model()!.history), true)
+          assert.equal(selectCanUndo(root.model()!), true)
           renderer.clickByTestId("board.undo")
           yield* Effect.promise(tick)
           assert.equal(
-            cardsInLane(root.model()!.cards, "done")[0]?.title ===
+            cardsInLane(selectCards(root.model()!), "done")[0]?.title ===
               "Refined GPUI native host",
             false
           )
-          assert.equal(canRedoHistory(root.model()!.history), true)
+          assert.equal(selectCanRedo(root.model()!), true)
           renderer.clickByTestId("board.redo")
           yield* Effect.promise(tick)
           assert.equal(
-            cardsInLane(root.model()!.cards, "done")[0]?.title,
+            cardsInLane(selectCards(root.model()!), "done")[0]?.title,
             "Refined GPUI native host"
           )
         })

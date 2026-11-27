@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import { Component } from "@effect/ui"
 import { Story, TestHost } from "@effect/ui/testing"
-import { canRedoHistory, canUndoHistory, cardsInLane } from "@folio/kanban-domain"
+import { cardsInLane } from "@folio/kanban-domain"
 import {
   loadInitialBoard,
   makeMemoryBoardRepository
@@ -22,7 +22,16 @@ import {
   SaveBoard,
   kanbanCommandsLayer,
   keyValueBoardRepositoryLayer,
-  loadFolioProps
+  loadFolioProps,
+  selectBackgroundTrips,
+  selectCanRedo,
+  selectCanUndo,
+  selectCards,
+  selectDensity,
+  selectInspectorOpen,
+  selectNotice,
+  selectTheme,
+  selectViewport
 } from "../src/index.ts"
 
 const desktopTestProps = {
@@ -32,21 +41,21 @@ const desktopTestProps = {
   initialBoard: Option.none()
 } as const
 
-describe("@folio/kanban-app (Unbraided Hexagonal Effect DI)", () => {
-  it("Story: validates quick-add, mints card via MintCardMeta, moves lane, and supports Undo/Redo", async () => {
+describe("@folio/kanban-app (Thin @effect/ui Shell over Pure Reducer)", () => {
+  it("Story: interprets reducer AppEffects into MintCardMeta and SaveBoard commands", async () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           const s = yield* Story.make(FolioApp, desktopTestProps)
           assert.deepEqual(s.subscriptions, ["app-lifecycle", "viewport"])
-          assert.equal(s.model.cards.length, 8)
-          assert.equal(s.model.theme, "paper")
+          assert.equal(selectCards(s.model).length, 8)
+          assert.equal(selectTheme(s.model), "paper")
 
           // Quick-add validation stays pure
           s.send(FolioAppMessage.ClickedStartAddCard({ lane: "backlog" }))
           s.send(FolioAppMessage.TypedQuickTitle({ text: "A" }))
           s.send(FolioAppMessage.SubmittedQuickCard())
-          assert.ok(s.model.notice.includes("at least"))
+          assert.ok(selectNotice(s.model).includes("at least"))
 
           // Valid quick-add issues MintCardMeta, then SaveBoard
           s.send(FolioAppMessage.TypedQuickTitle({ text: "Unified cross-platform app" }))
@@ -62,8 +71,8 @@ describe("@folio/kanban-app (Unbraided Hexagonal Effect DI)", () => {
             .expectExact(SaveBoard)
             .resolve(SaveBoard, Component.noop)
 
-          assert.equal(s.model.cards.length, 9)
-          const created = cardsInLane(s.model.cards, "backlog").find(
+          assert.equal(selectCards(s.model).length, 9)
+          const created = cardsInLane(selectCards(s.model), "backlog").find(
             (c) => c.title === "Unified cross-platform app"
           )
           assert.ok(created)
@@ -81,25 +90,25 @@ describe("@folio/kanban-app (Unbraided Hexagonal Effect DI)", () => {
             .expectExact(SaveBoard)
             .resolve(SaveBoard, Component.noop)
           assert.equal(
-            cardsInLane(s.model.cards, "in_progress")[0]?.id,
+            cardsInLane(selectCards(s.model), "in_progress")[0]?.id,
             created.id
           )
 
           // Undo & Redo
-          assert.equal(canUndoHistory(s.model.history), true)
+          assert.equal(selectCanUndo(s.model), true)
           s.send(FolioAppMessage.ClickedUndo())
             .expectExact(SaveBoard)
             .resolve(SaveBoard, Component.noop)
           assert.equal(
-            cardsInLane(s.model.cards, "backlog").some((c) => c.id === created.id),
+            cardsInLane(selectCards(s.model), "backlog").some((c) => c.id === created.id),
             true
           )
-          assert.equal(canRedoHistory(s.model.history), true)
+          assert.equal(selectCanRedo(s.model), true)
           s.send(FolioAppMessage.ClickedRedo())
             .expectExact(SaveBoard)
             .resolve(SaveBoard, Component.noop)
           assert.equal(
-            cardsInLane(s.model.cards, "in_progress")[0]?.id,
+            cardsInLane(selectCards(s.model), "in_progress")[0]?.id,
             created.id
           )
         })
@@ -129,20 +138,20 @@ describe("@folio/kanban-app (Unbraided Hexagonal Effect DI)", () => {
         })
         const root = yield* TestHost.mount(FolioApp, props)
         yield* TestHost.settle
-        assert.equal(root.model()?.cards.length, 8)
-        assert.equal(root.model()?.inspectorOpen, false)
+        assert.equal(selectCards(root.model()!).length, 8)
+        assert.equal(selectInspectorOpen(root.model()!), false)
 
         root.send(FolioAppMessage.ClickedToggleInspector())
         yield* TestHost.settle
-        assert.equal(root.model()?.inspectorOpen, true)
+        assert.equal(selectInspectorOpen(root.model()!), true)
 
         root.send(FolioAppMessage.SelectedDensity({ density: "compact" }))
         yield* TestHost.settle
-        assert.equal(root.model()?.density, "compact")
+        assert.equal(selectDensity(root.model()!), "compact")
 
         root.send(FolioAppMessage.ClickedToggleTheme())
         yield* TestHost.settle
-        assert.equal(root.model()?.theme, "graphite")
+        assert.equal(selectTheme(root.model()!), "graphite")
         assert.equal(repo.getSaved()?.theme, "graphite")
       }).pipe(Effect.scoped, Effect.provide(envLayer))
     )
@@ -176,13 +185,13 @@ describe("@folio/kanban-app (Unbraided Hexagonal Effect DI)", () => {
         })
         const root = yield* TestHost.mount(FolioApp, props)
         yield* TestHost.settle
-        assert.equal(root.model()?.viewport.width, 390)
+        assert.equal(selectViewport(root.model()!).width, 390)
 
         // Quick-add mints ID via IdGenerator and persists via KeyValueBoardRepository
         root.send(FolioAppMessage.TypedQuickTitle({ text: "Wired via Effect DI" }))
         root.send(FolioAppMessage.SubmittedQuickCard())
         yield* TestHost.settle
-        assert.equal(root.model()?.cards[0]?.id, "mobile-card-1")
+        assert.equal(selectCards(root.model()!)[0]?.id, "mobile-card-1")
 
         // Reactive viewport resize updates layout geometry live
         root.send(
@@ -193,8 +202,8 @@ describe("@folio/kanban-app (Unbraided Hexagonal Effect DI)", () => {
         root.send(FolioAppMessage.ChangedLifecycle({ state: "background" }))
         root.send(FolioAppMessage.ChangedLifecycle({ state: "active" }))
         yield* TestHost.settle
-        assert.equal(root.model()?.viewport.width, 1200)
-        assert.equal(root.model()?.backgroundTrips, 1)
+        assert.equal(selectViewport(root.model()!).width, 1200)
+        assert.equal(selectBackgroundTrips(root.model()!), 1)
 
         const after = yield* loadInitialBoard
         assert.equal(Option.isSome(after), true)

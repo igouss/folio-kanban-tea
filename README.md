@@ -55,12 +55,14 @@ The repository strictly separates **ports**, **implementation concerns** (render
 ║   • Entities, WIP limits, velocity, pure immutable undo/redo, Schemas       ║
 ║   • Domain Outbound Port: BoardRepository (./ports — zero storage coupling) ║
 ║                                                                             ║
-║   @folio/kanban-app (Application Core, Commands, Adapters & Driving UI)     ║
+║   @folio/kanban-app (Application Layer: Reducer, Commands, Adapters & UI)   ║
+║   • State (./state): Hidden KanbanState behind pure reduce(state, action)   ║
+║     -> [nextState, AppEffect[]] + read-only selectors (zero @effect/ui)     ║
 ║   • Commands (./commands): kanbanCommandsLayer (SaveBoard · MintCardMeta)   ║
 ║     requires ONLY BoardRepository | IdGenerator (zero KeyValueStore coupling)║
 ║   • Storage Adapter (./adapters): keyValueBoardRepositoryLayer (optional)   ║
-║   • Subscriptions: Lifecycle.changes · Viewport.changes (live responsive)   ║
-║   • Driving UI: ONE FolioApp component + views & Paper/Graphite palettes    ║
+║   • Driving UI (ui/FolioApp): thin @effect/ui shell interpreting AppEffect[]║
+║     and passing only read-only BoardScreenSnapshot projections to views     ║
 ║                                                                             ║
 ║   Platform Composition Roots (explicit Effect Layer dependency wiring):     ║
 ║   ┌─────────────────────┐ ┌──────────────────────┐ ┌─────────────────────┐  ║
@@ -123,10 +125,11 @@ Any new application can live alongside `apps/kanban/` as a pure consumer without
         │       └── ports/                    #   Domain outbound port (BoardRepository)
         ├── application/                      # Application Layer (@folio/kanban-app)
         │   └── src/
+        │       ├── state/                    #   Hidden KanbanState + pure reducer + AppEffect[] + selectors
         │       ├── commands/                 #   Use-case Effect commands (SaveBoard, MintCardMeta)
         │       ├── adapters/                 #   Driven storage adapter (KeyValueBoardRepository)
         │       ├── presentation/             #   Kanban view-models, search, kanbanBoard primitive
-        │       └── ui/                       #   Driving universal UI (FolioApp, theme, views/)
+        │       └── ui/                       #   Thin @effect/ui shell (FolioApp, theme, views/)
         └── targets/                          # Outermost Delivery Composition Roots (Effect Layer wiring)
             ├── web/                          # @folio/kanban-web (Web DOM + localStorage + Vite)
             ├── desktop-gpui/                 # @folio/kanban-desktop (Zed GPUI + FileStore + Node)

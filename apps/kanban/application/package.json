@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./adapters": "./src/adapters/index.ts",
     "./commands": "./src/commands/index.ts",
-    "./presentation": "./src/presentation/index.ts"
+    "./presentation": "./src/presentation/index.ts",
+    "./state": "./src/state/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

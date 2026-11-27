@@ -1,15 +1,12 @@
 import type { Ui } from "@universal-ui/core"
+import type { BoardScreenSnapshot } from "../../state/index.ts"
 import type { FolioPalette as Palette } from "../theme.ts"
-import {
-  FolioAppMessage as Msg,
-  type FolioAppMessage,
-  type FolioAppModel
-} from "../FolioApp.ts"
+import { FolioAppMessage as Msg, type FolioAppMessage } from "../FolioApp.ts"
 import { secondaryButtonStyle } from "./controls.ts"
 
 export const inspectorPanel = (
   h: Ui.H<FolioAppMessage>,
-  model: FolioAppModel,
+  screen: BoardScreenSnapshot,
   p: Palette
 ) =>
   h.box
@@ -39,7 +36,7 @@ export const inspectorPanel = (
         .children(
           h.text
             .style({ fontSize: 12.5, fontWeight: "700", color: p.ink })
-            .children(`MVU Trace (${model.dispatchCount})`),
+            .children(`MVU Trace (${screen.dispatchCount})`),
           h.button
             .testId("inspector.close")
             .ariaLabel("Close MVU trace")
@@ -64,10 +61,10 @@ export const inspectorPanel = (
         .children(
           h.text
             .style({ fontSize: 11, fontWeight: "600", color: p.inkSoft })
-            .children(`Undo stack: ${model.history.past.length}`),
+            .children(`Undo stack: ${screen.undoDepth}`),
           h.text
             .style({ fontSize: 11, fontWeight: "600", color: p.inkSoft })
-            .children(`Redo stack: ${model.history.future.length}`)
+            .children(`Redo stack: ${screen.redoDepth}`)
         ),
       h.scroll
         .style({
@@ -79,11 +76,11 @@ export const inspectorPanel = (
             .collapsable(false)
             .style({ flexDirection: "column", gap: 6 })
             .children(
-              model.traceEntries.length === 0
+              screen.traceEntries.length === 0
                 ? h.text
                     .style({ fontSize: 11.5, color: p.inkMuted })
                     .children("Interact with the board to stream pure TEA messages.")
-                : model.traceEntries.map((entry, idx) =>
+                : screen.traceEntries.map((entry, idx) =>
                     h.box
                       .key(`trace-${idx}`)
                       .style({
