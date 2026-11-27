@@ -1,10 +1,7 @@
 import { readSegmentedControl } from "@universal-ui/behaviors"
 import type { Ui } from "@universal-ui/core"
 import { deriveBoardView } from "../../presentation/index.ts"
-import {
-  NoticeStateSchema,
-  type BoardScreenSnapshot
-} from "../../state/index.ts"
+import type { BoardScreenSnapshot } from "../../state/index.ts"
 import type { FolioPalette as Palette } from "../theme.ts"
 import {
   FolioAppMessage as Msg,
@@ -14,7 +11,14 @@ import {
 import { InspectorFeature } from "../components/InspectorFeature.ts"
 import { SyncStatus } from "../components/SyncStatus.ts"
 import { laneColumn } from "./LaneColumn.ts"
-import { pillBadge, secondaryButtonStyle, segmentedControl } from "./controls.ts"
+import {
+  actionButton,
+  noticeBanner,
+  pillBadge,
+  segmentedControl,
+  textInputStyle,
+  velocityProgressBar
+} from "./controls.ts"
 
 const densityOptions: ReadonlyArray<{
   readonly value: "comfortable" | "compact"
@@ -23,6 +27,33 @@ const densityOptions: ReadonlyArray<{
   { value: "comfortable", label: "Detailed" },
   { value: "compact", label: "Compact" }
 ]
+
+const metricChip = (
+  h: Ui.H<FolioAppMessage, FolioAppProps>,
+  label: string,
+  value: string,
+  p: Palette
+) =>
+  h.box
+    .style({
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 5,
+      paddingHorizontal: 10,
+      borderRadius: 6,
+      backgroundColor: p.card,
+      borderWidth: 1,
+      borderColor: p.rule
+    })
+    .children(
+      h.text
+        .style({ fontSize: 12, fontWeight: "600", color: p.inkMuted })
+        .children(label),
+      h.text
+        .style({ fontSize: 12, fontWeight: "700", color: p.ink })
+        .children(value)
+    )
 
 export const columnsBoardView = (
   h: Ui.H<FolioAppMessage, FolioAppProps>,
@@ -42,7 +73,6 @@ export const columnsBoardView = (
     items: densityOptions
   })
   const { velocity: stats, progress: velocity, priorityControl } = board
-  const { canUndo, canRedo } = screen
 
   return h.box
     .style({ flex: 1, minHeight: 0, flexDirection: "column" })
@@ -63,11 +93,7 @@ export const columnsBoardView = (
         })
         .children(
           h.box
-            .style({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 10
-            })
+            .style({ flexDirection: "row", alignItems: "center", gap: 10 })
             .children(
               h.box.style({
                 width: 10,
@@ -98,93 +124,52 @@ export const columnsBoardView = (
               gap: 8
             })
             .children(
-              canUndo &&
-                h.button
-                  .testId("board.undo")
-                  .ariaLabel("Undo last board change")
-                  .style(secondaryButtonStyle(p, 10))
-                  .hover({ backgroundColor: p.cardHover, borderColor: p.ruleStrong })
-                  .on("press", Msg.ClickedUndo())
-                  .children(
-                    h.text
-                      .style({ fontSize: 12, fontWeight: "600", color: p.ink })
-                      .children("Undo")
-                  ),
-              canRedo &&
-                h.button
-                  .testId("board.redo")
-                  .ariaLabel("Redo board change")
-                  .style(secondaryButtonStyle(p, 10))
-                  .hover({ backgroundColor: p.cardHover, borderColor: p.ruleStrong })
-                  .on("press", Msg.ClickedRedo())
-                  .children(
-                    h.text
-                      .style({ fontSize: 12, fontWeight: "600", color: p.ink })
-                      .children("Redo")
-                  ),
-              h.button
-                .testId("board.inspector")
-                .ariaLabel("Toggle MVU Trace")
-                .style({
-                  ...secondaryButtonStyle(p, 10),
-                  ...(screen.inspectorOpen
-                    ? { backgroundColor: p.ink, borderColor: p.ink }
-                    : {})
-                })
-                .on("press", Msg.ClickedToggleInspector())
-                .children(
-                  h.text
-                    .style({
-                      fontSize: 12,
-                      fontWeight: "600",
-                      color: screen.inspectorOpen ? p.card : p.ink
-                    })
-                    .children("MVU Trace")
-                ),
-              h.button
-                .testId("theme.toggle")
-                .ariaLabel("Toggle theme")
-                .style(secondaryButtonStyle(p))
-                .hover({ backgroundColor: p.cardHover, borderColor: p.ruleStrong })
-                .on("press", Msg.ClickedToggleTheme())
-                .children(
-                  h.text
-                    .style({ fontSize: 12, fontWeight: "600", color: p.ink })
-                    .children(
-                      screen.theme === "paper"
-                        ? "Theme: Paper -> Graphite"
-                        : "Theme: Graphite -> Paper"
-                    )
-                ),
-              h.button
-                .testId("board.reset")
-                .ariaLabel("Reset demo board")
-                .style(secondaryButtonStyle(p))
-                .hover({ backgroundColor: p.cardHover, borderColor: p.ruleStrong })
-                .on("press", Msg.ClickedResetDemo())
-                .children(
-                  h.text
-                    .style({ fontSize: 12, fontWeight: "600", color: p.ink })
-                    .children("Reset demo")
-                ),
-              h.button
-                .testId("board.newCard")
-                .ariaLabel("Add new card")
-                .style({
-                  paddingVertical: 6,
-                  paddingHorizontal: 12,
-                  borderRadius: 6,
-                  borderWidth: 1,
-                  borderColor: p.accent,
-                  backgroundColor: p.accent
-                })
-                .hover({ backgroundColor: p.accentHover })
-                .on("press", Msg.ClickedStartAddCard({ lane: "backlog" }))
-                .children(
-                  h.text
-                    .style({ fontSize: 12, fontWeight: "700", color: p.accentInk })
-                    .children("+ New card")
-                )
+              screen.canUndo &&
+                actionButton(h, p, {
+                  label: "Undo",
+                  testId: "board.undo",
+                  ariaLabel: "Undo last board change",
+                  paddingHorizontal: 10,
+                  onPress: Msg.ClickedUndo()
+                }),
+              screen.canRedo &&
+                actionButton(h, p, {
+                  label: "Redo",
+                  testId: "board.redo",
+                  ariaLabel: "Redo board change",
+                  paddingHorizontal: 10,
+                  onPress: Msg.ClickedRedo()
+                }),
+              actionButton(h, p, {
+                label: "MVU Trace",
+                testId: "board.inspector",
+                ariaLabel: "Toggle MVU Trace",
+                paddingHorizontal: 10,
+                active: screen.inspectorOpen,
+                onPress: Msg.ClickedToggleInspector()
+              }),
+              actionButton(h, p, {
+                label:
+                  screen.theme === "paper"
+                    ? "Theme: Paper -> Graphite"
+                    : "Theme: Graphite -> Paper",
+                testId: "theme.toggle",
+                ariaLabel: "Toggle theme",
+                onPress: Msg.ClickedToggleTheme()
+              }),
+              actionButton(h, p, {
+                label: "Reset demo",
+                testId: "board.reset",
+                ariaLabel: "Reset demo board",
+                onPress: Msg.ClickedResetDemo()
+              }),
+              actionButton(h, p, {
+                label: "+ New card",
+                variant: "primary",
+                testId: "board.newCard",
+                ariaLabel: "Add new card",
+                onPress: Msg.ClickedStartAddCard({ lane: "backlog" })
+              })
             )
         ),
       // Toolbar + Telemetry
@@ -216,17 +201,13 @@ export const columnsBoardView = (
                 .value(screen.searchQuery)
                 .placeholder("Fuzzy filter by code, title, #tag, assignee...")
                 .placeholderColor(p.inkMuted)
-                .style({
-                  width: 260,
-                  paddingVertical: 7,
-                  paddingHorizontal: 11,
-                  borderRadius: 6,
-                  borderWidth: 1,
-                  borderColor: p.rule,
-                  backgroundColor: p.input,
-                  color: p.ink,
-                  fontSize: 13
-                })
+                .style(
+                  textInputStyle(p, {
+                    width: 260,
+                    paddingVertical: 7,
+                    borderRadius: 6
+                  })
+                )
                 .on("changeText", ({ text }) => Msg.TypedSearchQuery({ text })),
               segmentedControl(h, priorityControl, p, {
                 testIdPrefix: "filter",
@@ -241,124 +222,20 @@ export const columnsBoardView = (
               })
             ),
           h.box
-            .style({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12
-            })
+            .style({ flexDirection: "row", alignItems: "center", gap: 12 })
             .children(
-              h.box
-                .style({
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 6,
-                  paddingVertical: 5,
-                  paddingHorizontal: 10,
-                  borderRadius: 6,
-                  backgroundColor: p.card,
-                  borderWidth: 1,
-                  borderColor: p.rule
-                })
-                .children(
-                  h.text
-                    .style({ fontSize: 12, fontWeight: "600", color: p.inkMuted })
-                    .children("Cards"),
-                  h.text
-                    .style({ fontSize: 12, fontWeight: "700", color: p.ink })
-                    .children(String(stats.totalCards))
-                ),
-              h.box
-                .style({
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 6,
-                  paddingVertical: 5,
-                  paddingHorizontal: 10,
-                  borderRadius: 6,
-                  backgroundColor: p.card,
-                  borderWidth: 1,
-                  borderColor: p.rule
-                })
-                .children(
-                  h.text
-                    .style({ fontSize: 12, fontWeight: "600", color: p.inkMuted })
-                    .children("Done"),
-                  h.text
-                    .style({ fontSize: 12, fontWeight: "700", color: p.ink })
-                    .children(`${stats.donePoints}/${stats.totalPoints}pt`)
-                ),
-              h.box
-                .testId("board.progress")
-                .role(velocity.rootAttrs.role ?? "progressbar")
-                .ariaLabel(velocity.rootAttrs["aria-label"] ?? "Sprint velocity")
-                .ariaValueNow(velocity.percent)
-                .ariaValueMin(0)
-                .ariaValueMax(100)
-                .ariaValueText(velocity.text)
-                .style({
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 8
-                })
-                .children(
-                  h.box
-                    .style({
-                      width: 96,
-                      height: 7,
-                      borderRadius: 999,
-                      backgroundColor: p.lane,
-                      overflow: "hidden"
-                    })
-                    .children(
-                      h.box.style({
-                        width: `${velocity.percent}%`,
-                        height: "100%",
-                        borderRadius: 999,
-                        backgroundColor: p.pine
-                      })
-                    ),
-                  h.text
-                    .style({ fontSize: 12, fontWeight: "700", color: p.ink })
-                    .children(velocity.text)
-                )
+              metricChip(h, "Cards", String(stats.totalCards), p),
+              metricChip(h, "Done", `${stats.donePoints}/${stats.totalPoints}pt`, p),
+              velocityProgressBar(h, velocity, p)
             )
         ),
       // Notice banner
-      NoticeStateSchema.guards.Visible(screen.notice) &&
-        (() => {
-          const notice = screen.notice
-          const isError = notice.tone === "error"
-          const bg = isError ? p.accentSoft : p.pineSoft
-          const fg = isError ? p.accent : p.pine
-          return h.box
-            .testId("board.notice")
-            .role(isError ? "alert" : "status")
-            .ariaLabel(notice.announcement)
-            .style({
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginTop: 10,
-              marginHorizontal: 20,
-              paddingVertical: 8,
-              paddingHorizontal: 12,
-              borderRadius: 6,
-              backgroundColor: bg
-            })
-            .children(
-              h.text
-                .style({ fontSize: 12, fontWeight: "600", color: fg })
-                .children(notice.message),
-              h.button
-                .testId("notice.dismiss")
-                .on("press", Msg.DismissedNotice())
-                .children(
-                  h.text
-                    .style({ fontSize: 12, fontWeight: "700", color: fg })
-                    .children("Dismiss")
-                )
-            )
-        })(),
+      noticeBanner(h, screen.notice, p, {
+        testId: "board.notice",
+        onDismiss: Msg.DismissedNotice(),
+        dismissTestId: "notice.dismiss",
+        style: { marginTop: 10, marginHorizontal: 20 }
+      }),
       // Workspace body: 4 Kanban lanes + optional MVU Trace drawer
       h.box
         .style({
@@ -370,7 +247,9 @@ export const columnsBoardView = (
         .children(
           h.box
             .role(board.board.rootAttrs.role ?? "region")
-            .ariaLabel(board.board.rootAttrs["aria-label"] ?? "Folio Kanban board")
+            .ariaLabel(
+              board.board.rootAttrs["aria-label"] ?? "Folio Kanban board"
+            )
             .style({
               flex: 1,
               minHeight: 0,
@@ -417,11 +296,7 @@ export const columnsBoardView = (
               `Unified @effect/ui + @ui-sdk/core app (${h.props.platformLabel}) · Click any card to edit, < / > to move lanes`
             ),
           h.box
-            .style({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 14
-            })
+            .style({ flexDirection: "row", alignItems: "center", gap: 14 })
             .children(
               SyncStatus(h, {
                 key: "board-sync",

@@ -10,23 +10,13 @@ export {
   deriveBoardView,
   deriveCardEditorControls,
   filterAndRankCards,
-  kanbanBoard,
-  readKanbanBoard,
   scoreCard,
   type BoardViewSnapshot,
   type CardEditorControlsSnapshot,
   type DeriveBoardViewOptions,
   type DeriveCardEditorControlsOptions,
-  type KanbanBoardOptions,
-  type KanbanBoardSnapshot,
-  type KanbanCardPartSnapshot,
-  type KanbanLanePartSnapshot,
-  type KanbanSelectionReason,
   type LaneViewSnapshot,
   type PriorityFilterLabelStyle,
-  type ReadKanbanBoardCardInput,
-  type ReadKanbanBoardLaneInput,
-  type ReadKanbanBoardOptions,
   type SearchableCard
 } from "./presentation/index.ts"
 export {

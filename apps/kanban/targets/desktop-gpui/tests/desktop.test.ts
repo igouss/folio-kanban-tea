@@ -150,6 +150,52 @@ describe("Folio Kanban Desktop (@folio/kanban-app on @universal-ui/host-gpui)", 
             cardsInLane(selectCards(root.model()!), "done")[0]?.title,
             "Refined GPUI native host"
           )
+
+          // Escape keyDown cancels quick-add composer & editor modal
+          renderer.clickByTestId("board.newCard")
+          yield* Effect.promise(() =>
+            waitFor(() => renderer.findByTestId("quick.input") !== undefined)
+          )
+          const quickEl = renderer.findByTestId("quick.input")!
+          renderer.dispatch({ elementId: quickEl.id, eventType: "keyDown", key: "escape" })
+          yield* Effect.promise(() =>
+            waitFor(() => renderer.findByTestId("quick.input") === undefined)
+          )
+          assert.equal(renderer.findByTestId("quick.input"), undefined)
+
+          // Delete card from editor, open/close inspector, trigger sync, reset demo
+          renderer.clickByTestId(`card.open.${created.id}`)
+          yield* Effect.promise(() =>
+            waitFor(() => renderer.findByTestId("editor.delete") !== undefined)
+          )
+          renderer.clickByTestId("editor.delete")
+          yield* Effect.promise(() =>
+            waitFor(() => selectCards(root.model()!).length === 8)
+          )
+          assert.equal(selectCards(root.model()!).length, 8)
+
+          renderer.clickByTestId("board.inspector")
+          yield* Effect.promise(() =>
+            waitFor(() => renderer.findByTestId("inspector.panel") !== undefined)
+          )
+          assert.ok(renderer.findByTestId("inspector.panel") !== undefined)
+          renderer.clickByTestId("inspector.close")
+          yield* Effect.promise(() =>
+            waitFor(() => renderer.findByTestId("inspector.panel") === undefined)
+          )
+
+          renderer.clickByTestId("sync.trigger")
+          yield* Effect.promise(() =>
+            waitFor(() =>
+              renderer.getAllText().some((t) => t.includes("Synced · 8 cards"))
+            )
+          )
+          renderer.clickByTestId("board.reset")
+          yield* Effect.promise(() =>
+            waitFor(() =>
+              renderer.getAllText().some((t) => t.includes("Reset board"))
+            )
+          )
         })
       ).pipe(Effect.provide(appLayer))
     )

@@ -63,87 +63,57 @@ export type WorkspaceModeTransition =
     }
 
 const IGNORED: WorkspaceModeTransition = { _tag: "Ignored" }
+const RESET_IDLE: WorkspaceModeTransition = {
+  _tag: "Updated",
+  mode: IDLE_WORKSPACE_MODE
+}
 
-const exhaustiveEvent = (event: never): WorkspaceModeTransition => event
+const updated = (mode: WorkspaceMode): WorkspaceModeTransition => ({
+  _tag: "Updated",
+  mode
+})
 
-/**
- * State-first finite state machine for `WorkspaceMode`.
- * Switching on `mode._tag` first and exhaustively matching `event._tag` inside
- * every state ensures that adding a mode or event requires an explicit decision
- * for every cell of the `(mode, event)` transition matrix.
- */
 export const transitionWorkspaceMode = (
   mode: WorkspaceMode,
   activeLane: LaneId,
   event: WorkspaceModeEvent
 ): WorkspaceModeTransition => {
+  if (event._tag === "Reset") return RESET_IDLE
+
   switch (mode._tag) {
     case "Idle":
       switch (event._tag) {
         case "StartAddCard":
-          return {
-            _tag: "Updated",
-            mode: { _tag: "Composing", lane: event.lane, title: "" }
-          }
+          return updated({ _tag: "Composing", lane: event.lane, title: "" })
         case "TypeQuickTitle":
-          return {
-            _tag: "Updated",
-            mode: { _tag: "Composing", lane: activeLane, title: event.text }
-          }
+          return updated({ _tag: "Composing", lane: activeLane, title: event.text })
         case "SubmitQuickCard": {
           const check = validateCardTitle("")
-          return check.ok
-            ? IGNORED
-            : { _tag: "ValidationFailed", error: check.error }
+          return check.ok ? IGNORED : { _tag: "ValidationFailed", error: check.error }
         }
         case "OpenEditor":
-          return {
-            _tag: "Updated",
-            mode: { _tag: "EditingCard", draft: event.draft }
-          }
-        case "Reset":
-          return { _tag: "Updated", mode: IDLE_WORKSPACE_MODE }
-        case "SelectedLane":
-        case "ReceiveMintResult":
-        case "FailMintResult":
-        case "CancelQuickCard":
-        case "CommitEditedCard":
-        case "CancelEditCard":
-        case "CardDeleted":
-          return IGNORED
+          return updated({ _tag: "EditingCard", draft: event.draft })
         default:
-          return exhaustiveEvent(event)
+          return IGNORED
       }
 
     case "Composing":
       switch (event._tag) {
         case "SelectedLane":
-          return {
-            _tag: "Updated",
-            mode: { ...mode, lane: event.lane }
-          }
+          return updated({ ...mode, lane: event.lane })
         case "StartAddCard":
-          return {
-            _tag: "Updated",
-            mode: { _tag: "Composing", lane: event.lane, title: "" }
-          }
+          return updated({ _tag: "Composing", lane: event.lane, title: "" })
         case "TypeQuickTitle":
-          return {
-            _tag: "Updated",
-            mode: { _tag: "Composing", lane: mode.lane, title: event.text }
-          }
+          return updated({ _tag: "Composing", lane: mode.lane, title: event.text })
         case "SubmitQuickCard": {
           const check = validateCardTitle(mode.title)
-          if (!check.ok) {
-            return { _tag: "ValidationFailed", error: check.error }
+          if (!check.ok) return { _tag: "ValidationFailed", error: check.error }
+          const nextMode: Extract<WorkspaceMode, { readonly _tag: "SubmittingCard" }> = {
+            _tag: "SubmittingCard",
+            requestId: event.nextRequestId,
+            lane: mode.lane,
+            title: check.title
           }
-          const nextMode: Extract<WorkspaceMode, { readonly _tag: "SubmittingCard" }> =
-            {
-              _tag: "SubmittingCard",
-              requestId: event.nextRequestId,
-              lane: mode.lane,
-              title: check.title
-            }
           return {
             _tag: "StartMint",
             mode: nextMode,
@@ -153,105 +123,60 @@ export const transitionWorkspaceMode = (
           }
         }
         case "CancelQuickCard":
-          return { _tag: "Updated", mode: IDLE_WORKSPACE_MODE }
+          return RESET_IDLE
         case "OpenEditor":
-          return {
-            _tag: "Updated",
-            mode: { _tag: "EditingCard", draft: event.draft }
-          }
-        case "Reset":
-          return { _tag: "Updated", mode: IDLE_WORKSPACE_MODE }
-        case "ReceiveMintResult":
-        case "FailMintResult":
-        case "CommitEditedCard":
-        case "CancelEditCard":
-        case "CardDeleted":
-          return IGNORED
+          return updated({ _tag: "EditingCard", draft: event.draft })
         default:
-          return exhaustiveEvent(event)
+          return IGNORED
       }
 
     case "SubmittingCard":
       switch (event._tag) {
         case "ReceiveMintResult":
-          if (event.requestId !== mode.requestId) {
-            return IGNORED
-          }
-          return {
-            _tag: "MintAccepted",
-            mode: { _tag: "Idle" },
-            requestId: event.requestId,
-            lane: event.lane,
-            title: event.title
-          }
+          return event.requestId === mode.requestId
+            ? {
+                _tag: "MintAccepted",
+                mode: { _tag: "Idle" },
+                requestId: event.requestId,
+                lane: event.lane,
+                title: event.title
+              }
+            : IGNORED
         case "FailMintResult":
-          if (event.requestId !== mode.requestId) {
-            return IGNORED
-          }
-          return {
-            _tag: "MintFailed",
-            mode: {
-              _tag: "Composing",
-              lane: mode.lane,
-              title: mode.title
-            },
-            requestId: event.requestId
-          }
+          return event.requestId === mode.requestId
+            ? {
+                _tag: "MintFailed",
+                mode: { _tag: "Composing", lane: mode.lane, title: mode.title },
+                requestId: event.requestId
+              }
+            : IGNORED
         case "CancelQuickCard":
-          return { _tag: "Updated", mode: IDLE_WORKSPACE_MODE }
-        case "Reset":
-          return { _tag: "Updated", mode: IDLE_WORKSPACE_MODE }
-        case "SelectedLane":
-        case "StartAddCard":
-        case "TypeQuickTitle":
-        case "SubmitQuickCard":
-        case "OpenEditor":
-        case "CommitEditedCard":
-        case "CancelEditCard":
-        case "CardDeleted":
-          return IGNORED
+          return RESET_IDLE
         default:
-          return exhaustiveEvent(event)
+          return IGNORED
       }
 
     case "EditingCard":
       switch (event._tag) {
         case "StartAddCard":
-          return {
-            _tag: "Updated",
-            mode: { _tag: "Composing", lane: event.lane, title: "" }
-          }
+          return updated({ _tag: "Composing", lane: event.lane, title: "" })
         case "OpenEditor":
-          return {
-            _tag: "Updated",
-            mode: { _tag: "EditingCard", draft: event.draft }
-          }
+          return updated({ _tag: "EditingCard", draft: event.draft })
         case "CommitEditedCard":
-          if (event.draft.cardId !== mode.draft.cardId) {
-            return IGNORED
-          }
-          return {
-            _tag: "CommitEditCard",
-            mode: { _tag: "Idle" },
-            draft: event.draft,
-            title: event.title
-          }
-        case "CancelEditCard":
-        case "Reset":
-          return { _tag: "Updated", mode: IDLE_WORKSPACE_MODE }
-        case "CardDeleted":
-          return mode.draft.cardId === event.cardId
-            ? { _tag: "Updated", mode: IDLE_WORKSPACE_MODE }
+          return event.draft.cardId === mode.draft.cardId
+            ? {
+                _tag: "CommitEditCard",
+                mode: { _tag: "Idle" },
+                draft: event.draft,
+                title: event.title
+              }
             : IGNORED
-        case "SelectedLane":
-        case "TypeQuickTitle":
-        case "SubmitQuickCard":
-        case "ReceiveMintResult":
-        case "FailMintResult":
-        case "CancelQuickCard":
-          return IGNORED
+        case "CancelEditCard":
+          return RESET_IDLE
+        case "CardDeleted":
+          return mode.draft.cardId === event.cardId ? RESET_IDLE : IGNORED
         default:
-          return exhaustiveEvent(event)
+          return IGNORED
       }
 
     default: {

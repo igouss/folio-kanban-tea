@@ -1,17 +1,44 @@
-import { adjacentLanes, laneMeta, type KanbanCard } from "@folio/kanban-domain"
+import { adjacentLanes, laneMeta, type KanbanCard, type LaneMeta } from "@folio/kanban-domain"
 import { highlightText } from "@universal-ui/behaviors"
 import type { Ui } from "@universal-ui/core"
-import {
-  priorityColors,
-  type FolioPalette as Palette
-} from "../theme.ts"
+import { priorityColors, type FolioPalette as Palette } from "../theme.ts"
 import { FolioAppMessage as Msg, type FolioAppMessage } from "../FolioApp.ts"
+import { actionButton } from "./controls.ts"
 
 export interface CardItemOptions {
   readonly compact: boolean
   readonly searchQuery: string
   readonly isTabsLayout: boolean
 }
+
+const moveLaneButton = (
+  h: Ui.H<FolioAppMessage>,
+  card: KanbanCard,
+  target: LaneMeta,
+  direction: "prev" | "next",
+  isTabsLayout: boolean,
+  p: Palette
+) =>
+  actionButton(h, p, {
+    label:
+      direction === "prev"
+        ? isTabsLayout
+          ? `← ${target.shortTitle}`
+          : "<"
+        : isTabsLayout
+          ? `${target.shortTitle} →`
+          : ">",
+    testId: `card.${direction}.${card.id}`,
+    ariaLabel: `Move ${card.code} to ${target.title}`,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 11.5,
+    fontWeight: "700",
+    textColor: p.inkSoft,
+    style: { backgroundColor: p.surface },
+    hover: { backgroundColor: p.lane, borderColor: p.ruleStrong },
+    onPress: Msg.ClickedMoveCard({ cardId: card.id, toLane: target.id })
+  })
 
 export const cardItem = (
   h: Ui.H<FolioAppMessage>,
@@ -24,6 +51,23 @@ export const cardItem = (
   const prevLane = prevId !== undefined ? laneMeta(prevId) : undefined
   const nextLane = nextId !== undefined ? laneMeta(nextId) : undefined
   const titleSegments = highlightText(card.title, options.searchQuery)
+  const titleFontSize = options.isTabsLayout ? 15 : 13.5
+
+  const renderSegment = (
+    seg: (typeof titleSegments)[number],
+    idx: number,
+    inline: boolean
+  ) =>
+    h.text
+      .key(`${card.id}-seg-${idx}`)
+      .style({
+        ...(inline ? {} : { maxWidth: "100%", flexShrink: 1, minWidth: 0 }),
+        fontSize: titleFontSize,
+        fontWeight: "700",
+        color: seg.match ? p.accent : p.ink,
+        ...(seg.match ? { backgroundColor: p.accentSoft } : {})
+      })
+      .children(seg.text)
 
   return h.box
     .key(card.id)
@@ -39,10 +83,7 @@ export const cardItem = (
       borderColor: p.rule,
       backgroundColor: p.card
     })
-    .hover({
-      backgroundColor: p.cardHover,
-      borderColor: p.ruleStrong
-    })
+    .hover({ backgroundColor: p.cardHover, borderColor: p.ruleStrong })
     .children(
       // Header: priority pill + code + story points
       h.box
@@ -54,11 +95,7 @@ export const cardItem = (
         })
         .children(
           h.box
-            .style({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6
-            })
+            .style({ flexDirection: "row", alignItems: "center", gap: 6 })
             .children(
               h.box
                 .style({
@@ -69,30 +106,18 @@ export const cardItem = (
                 })
                 .children(
                   h.text
-                    .style({
-                      fontSize: 10,
-                      fontWeight: "700",
-                      color: badge.fg
-                    })
+                    .style({ fontSize: 10, fontWeight: "700", color: badge.fg })
                     .children(badge.label)
                 ),
               h.text
-                .style({
-                  fontSize: 11,
-                  fontWeight: "600",
-                  color: p.inkMuted
-                })
+                .style({ fontSize: 11, fontWeight: "600", color: p.inkMuted })
                 .children(card.code)
             ),
           h.text
-            .style({
-              fontSize: 11,
-              fontWeight: "600",
-              color: p.inkSoft
-            })
+            .style({ fontSize: 11, fontWeight: "600", color: p.inkSoft })
             .children(`${card.points}pt`)
         ),
-      // Clickable Title (opens editor modal or detail screen)
+      // Clickable Title
       h.button
         .testId(`card.open.${card.id}`)
         .ariaLabel(`Open ${card.code} ${card.title}`)
@@ -119,65 +144,29 @@ export const cardItem = (
                 .style({
                   width: "100%",
                   textAlign: "left",
-                  fontSize: options.isTabsLayout ? 15 : 13.5,
+                  fontSize: titleFontSize,
                   fontWeight: "700",
                   color: p.ink
                 })
                 .children(card.title)
             : options.isTabsLayout
               ? h.text
-                  .style({
-                    fontSize: 15,
-                    fontWeight: "700",
-                    color: p.ink
-                  })
-                  .children(
-                    titleSegments.map((seg, idx) =>
-                      h.text
-                        .key(`${card.id}-seg-${idx}`)
-                        .style({
-                          fontSize: 15,
-                          fontWeight: "700",
-                          color: seg.match ? p.accent : p.ink,
-                          ...(seg.match ? { backgroundColor: p.accentSoft } : {})
-                        })
-                        .children(seg.text)
-                    )
-                  )
-              : titleSegments.map((seg, idx) =>
-                  h.text
-                    .key(`${card.id}-seg-${idx}`)
-                    .style({
-                      maxWidth: "100%",
-                      flexShrink: 1,
-                      minWidth: 0,
-                      fontSize: 13.5,
-                      fontWeight: "700",
-                      color: seg.match ? p.accent : p.ink,
-                      ...(seg.match ? { backgroundColor: p.accentSoft } : {})
-                    })
-                    .children(seg.text)
-                )
+                  .style({ fontSize: titleFontSize, fontWeight: "700", color: p.ink })
+                  .children(titleSegments.map((seg, idx) => renderSegment(seg, idx, true)))
+              : titleSegments.map((seg, idx) => renderSegment(seg, idx, false))
         ),
-      // Notes preview (omitted in compact mode)
+      // Notes preview
       !options.compact &&
         card.notes.length > 0 &&
         h.text
           .numberOfLines(2)
-          .style({
-            fontSize: 12,
-            color: p.inkSoft
-          })
+          .style({ fontSize: 12, color: p.inkSoft })
           .children(card.notes),
       // Tags row
       !options.compact &&
         card.tags.length > 0 &&
         h.box
-          .style({
-            flexDirection: "row",
-            flexWrap: "wrap",
-            gap: 4
-          })
+          .style({ flexDirection: "row", flexWrap: "wrap", gap: 4 })
           .children(
             card.tags.map((tag) =>
               h.box
@@ -190,16 +179,12 @@ export const cardItem = (
                 })
                 .children(
                   h.text
-                    .style({
-                      fontSize: 10.5,
-                      fontWeight: "500",
-                      color: p.inkSoft
-                    })
+                    .style({ fontSize: 10.5, fontWeight: "500", color: p.inkSoft })
                     .children(`#${tag}`)
                 )
             )
           ),
-      // Footer: assignee pill + move left / move right controls
+      // Footer: assignee + move controls
       h.box
         .style({
           flexDirection: "row",
@@ -221,78 +206,16 @@ export const cardItem = (
             })
             .children(
               h.text
-                .style({
-                  fontSize: 10,
-                  fontWeight: "700",
-                  color: p.avatarInk
-                })
+                .style({ fontSize: 10, fontWeight: "700", color: p.avatarInk })
                 .children(card.assignee)
             ),
           h.box
-            .style({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6
-            })
+            .style({ flexDirection: "row", alignItems: "center", gap: 6 })
             .children(
               prevLane !== undefined &&
-                h.button
-                  .testId(`card.prev.${card.id}`)
-                  .ariaLabel(`Move ${card.code} to ${prevLane.title}`)
-                  .style({
-                    paddingVertical: 4,
-                    paddingHorizontal: 8,
-                    borderRadius: 6,
-                    borderWidth: 1,
-                    borderColor: p.rule,
-                    backgroundColor: p.surface
-                  })
-                  .hover({
-                    backgroundColor: p.lane,
-                    borderColor: p.ruleStrong
-                  })
-                  .on(
-                    "press",
-                    Msg.ClickedMoveCard({ cardId: card.id, toLane: prevLane.id })
-                  )
-                  .children(
-                    h.text
-                      .style({
-                        fontSize: 11.5,
-                        fontWeight: "700",
-                        color: p.inkSoft
-                      })
-                      .children(options.isTabsLayout ? `← ${prevLane.shortTitle}` : "<")
-                  ),
+                moveLaneButton(h, card, prevLane, "prev", options.isTabsLayout, p),
               nextLane !== undefined &&
-                h.button
-                  .testId(`card.next.${card.id}`)
-                  .ariaLabel(`Move ${card.code} to ${nextLane.title}`)
-                  .style({
-                    paddingVertical: 4,
-                    paddingHorizontal: 8,
-                    borderRadius: 6,
-                    borderWidth: 1,
-                    borderColor: p.rule,
-                    backgroundColor: p.surface
-                  })
-                  .hover({
-                    backgroundColor: p.lane,
-                    borderColor: p.ruleStrong
-                  })
-                  .on(
-                    "press",
-                    Msg.ClickedMoveCard({ cardId: card.id, toLane: nextLane.id })
-                  )
-                  .children(
-                    h.text
-                      .style({
-                        fontSize: 11.5,
-                        fontWeight: "700",
-                        color: p.inkSoft
-                      })
-                      .children(options.isTabsLayout ? `${nextLane.shortTitle} →` : ">")
-                  )
+                moveLaneButton(h, card, nextLane, "next", options.isTabsLayout, p)
             )
         )
     )

@@ -2,6 +2,7 @@ import type { Ui } from "@universal-ui/core"
 import type { LaneViewSnapshot } from "../../presentation/index.ts"
 import {
   WorkspaceModeSchema,
+  isComposerWorkspaceMode,
   type BoardScreenSnapshot
 } from "../../state/index.ts"
 import type { FolioPalette as Palette } from "../theme.ts"
@@ -11,7 +12,12 @@ import {
   type FolioAppProps
 } from "../FolioApp.ts"
 import { cardItem } from "./CardItem.ts"
-import { pillBadge, secondaryButtonStyle } from "./controls.ts"
+import {
+  actionButton,
+  emptyLaneBox,
+  pillBadge,
+  textInputStyle
+} from "./controls.ts"
 
 export const laneColumn = (
   h: Ui.H<FolioAppMessage, FolioAppProps>,
@@ -22,12 +28,8 @@ export const laneColumn = (
   const { lane, stats, visibleCards, wipText, laneAttrs } = entry
   const overWip = stats.overWip
   const { workspaceMode } = screen
-  const isComposerMode = WorkspaceModeSchema.isAnyOf([
-    "Composing",
-    "SubmittingCard"
-  ])
   const composerMode =
-    isComposerMode(workspaceMode) && workspaceMode.lane === lane.id
+    isComposerWorkspaceMode(workspaceMode) && workspaceMode.lane === lane.id
       ? workspaceMode
       : undefined
   const isSubmitting =
@@ -64,11 +66,7 @@ export const laneColumn = (
         })
         .children(
           h.box
-            .style({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6
-            })
+            .style({ flexDirection: "row", alignItems: "center", gap: 6 })
             .children(
               h.text
                 .style({ fontSize: 10.5, fontWeight: "700", color: p.inkMuted })
@@ -78,35 +76,23 @@ export const laneColumn = (
                 .children(lane.title)
             ),
           h.box
-            .style({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6
-            })
+            .style({ flexDirection: "row", alignItems: "center", gap: 6 })
             .children(
               pillBadge(h, wipText, {
                 bg: overWip ? p.accentSoft : p.card,
                 fg: overWip ? p.accent : p.inkSoft,
                 border: overWip ? p.accent : p.rule
               }),
-              h.button
-                .testId(`lane.add.${lane.id}`)
-                .ariaLabel(`Add card to ${lane.title}`)
-                .style({
-                  paddingVertical: 2,
-                  paddingHorizontal: 8,
-                  borderRadius: 6,
-                  borderWidth: 1,
-                  borderColor: p.rule,
-                  backgroundColor: p.card
-                })
-                .hover({ backgroundColor: p.cardHover, borderColor: p.ruleStrong })
-                .on("press", Msg.ClickedStartAddCard({ lane: lane.id }))
-                .children(
-                  h.text
-                    .style({ fontSize: 13, fontWeight: "700", color: p.ink })
-                    .children("+")
-                )
+              actionButton(h, p, {
+                label: "+",
+                testId: `lane.add.${lane.id}`,
+                ariaLabel: `Add card to ${lane.title}`,
+                paddingVertical: 2,
+                paddingHorizontal: 8,
+                fontSize: 13,
+                fontWeight: "700",
+                onPress: Msg.ClickedStartAddCard({ lane: lane.id })
+              })
             )
         ),
       // Inline quick-add composer
@@ -129,17 +115,15 @@ export const laneColumn = (
               .placeholder(`New card in ${lane.title}...`)
               .placeholderColor(p.inkMuted)
               .autoFocus(true)
-              .style({
-                width: "100%",
-                paddingVertical: 7,
-                paddingHorizontal: 10,
-                borderRadius: 6,
-                borderWidth: 1,
-                borderColor: p.ruleStrong,
-                backgroundColor: p.input,
-                color: p.ink,
-                fontSize: 13
-              })
+              .style(
+                textInputStyle(p, {
+                  width: "100%",
+                  paddingVertical: 7,
+                  paddingHorizontal: 10,
+                  borderRadius: 6,
+                  borderColor: p.ruleStrong
+                })
+              )
               .on("changeText", ({ text }) => Msg.TypedQuickTitle({ text }))
               .on("submit", Msg.SubmittedQuickCard())
               .on("keyDown", ({ key }) =>
@@ -152,67 +136,36 @@ export const laneColumn = (
                 gap: 6
               })
               .children(
-                h.button
-                  .testId("quick.cancel")
-                  .style(secondaryButtonStyle(p, 10))
-                  .on("press", Msg.CancelledQuickCard())
-                  .children(
-                    h.text
-                      .style({ fontSize: 11.5, fontWeight: "600", color: p.inkSoft })
-                      .children("Cancel")
-                  ),
-                h.button
-                  .testId("quick.submit")
-                  .disabled(isSubmitting)
-                  .style({
-                    paddingVertical: 6,
-                    paddingHorizontal: 12,
-                    borderRadius: 6,
-                    borderWidth: 1,
-                    borderColor: p.accent,
-                    backgroundColor: p.accent
-                  })
-                  .hover({ backgroundColor: p.accentHover })
-                  .on("press", Msg.SubmittedQuickCard())
-                  .children(
-                    h.text
-                      .style({ fontSize: 11.5, fontWeight: "700", color: p.accentInk })
-                      .children(isSubmitting ? "Adding..." : "Add card")
-                  )
+                actionButton(h, p, {
+                  label: "Cancel",
+                  testId: "quick.cancel",
+                  paddingHorizontal: 10,
+                  fontSize: 11.5,
+                  textColor: p.inkSoft,
+                  onPress: Msg.CancelledQuickCard()
+                }),
+                actionButton(h, p, {
+                  label: isSubmitting ? "Adding..." : "Add card",
+                  variant: "primary",
+                  testId: "quick.submit",
+                  disabled: isSubmitting,
+                  fontSize: 11.5,
+                  onPress: Msg.SubmittedQuickCard()
+                })
               )
           ),
       // Scrollable card list
       h.scroll
-        .style({
-          flex: 1,
-          minHeight: 0,
-          padding: 10
-        })
+        .style({ flex: 1, minHeight: 0, padding: 10 })
         .children(
           h.box
             .collapsable(false)
             .style({ flexDirection: "column", gap: 8 })
             .children(
               visibleCards.length === 0
-                ? h.box
-                    .testId(`lane.empty.${lane.id}`)
-                    .style({
-                      padding: 16,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: p.rule,
-                      backgroundColor: p.surface,
-                      alignItems: "center"
-                    })
-                    .children(
-                      h.text
-                        .style({ fontSize: 12, color: p.inkMuted })
-                        .children(
-                          stats.count > 0
-                            ? `${stats.count} ${stats.count === 1 ? "card" : "cards"} hidden by filter`
-                            : `No cards in ${lane.title}`
-                        )
-                    )
+                ? emptyLaneBox(h, stats.count, lane.title, p, {
+                    testId: `lane.empty.${lane.id}`
+                  })
                 : visibleCards.map((card) =>
                     cardItem(h, card, p, {
                       compact: screen.density === "compact",

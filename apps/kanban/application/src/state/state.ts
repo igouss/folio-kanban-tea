@@ -55,6 +55,11 @@ export const WorkspaceModeSchema = Schema.TaggedUnion({
 })
 export type WorkspaceMode = typeof WorkspaceModeSchema.Type
 
+export const isComposerWorkspaceMode = WorkspaceModeSchema.isAnyOf([
+  "Composing",
+  "SubmittingCard"
+])
+
 export const NoticeTone = Schema.Literals(["info", "error"])
 export type NoticeTone = typeof NoticeTone.Type
 

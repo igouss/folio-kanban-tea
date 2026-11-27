@@ -1,8 +1,8 @@
 import type { Ui } from "@universal-ui/core"
 import { deriveBoardView } from "../../presentation/index.ts"
 import {
-  NoticeStateSchema,
   WorkspaceModeSchema,
+  isComposerWorkspaceMode,
   type BoardScreenSnapshot
 } from "../../state/index.ts"
 import type { FolioPalette as Palette } from "../theme.ts"
@@ -12,7 +12,15 @@ import {
   type FolioAppProps
 } from "../FolioApp.ts"
 import { cardItem } from "./CardItem.ts"
-import { pillBadge, secondaryButtonStyle, segmentedControl } from "./controls.ts"
+import {
+  actionButton,
+  emptyLaneBox,
+  noticeBanner,
+  pillBadge,
+  segmentedControl,
+  textInputStyle,
+  velocityProgressBar
+} from "./controls.ts"
 
 export const tabsBoardView = (
   h: Ui.H<FolioAppMessage, FolioAppProps>,
@@ -37,15 +45,20 @@ export const tabsBoardView = (
   } = board
   const activeLaneMeta = activeLane.lane
   const visibleCards = activeLane.visibleCards
-  const overWip = activeLane.stats.overWip
-  const { canUndo, canRedo, workspaceMode } = screen
-  const isComposerMode = WorkspaceModeSchema.isAnyOf([
-    "Composing",
-    "SubmittingCard"
-  ])
-  const quickTitle = isComposerMode(workspaceMode) ? workspaceMode.title : ""
+  const { workspaceMode } = screen
+  const quickTitle = isComposerWorkspaceMode(workspaceMode)
+    ? workspaceMode.title
+    : ""
   const isSubmittingQuickCard =
     WorkspaceModeSchema.guards.SubmittingCard(workspaceMode)
+
+  const mobileInputStyle = textInputStyle(p, {
+    fontSize: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderColor: p.border,
+    backgroundColor: p.surface
+  })
 
   return h.box
     .style({ flex: 1, flexDirection: "column" })
@@ -89,16 +102,15 @@ export const tabsBoardView = (
                     { bg: p.pineSoft, fg: p.pine },
                     "lifecycle.badge"
                   ),
-                  h.button
-                    .testId("theme.toggle")
-                    .ariaLabel("Toggle theme")
-                    .style(secondaryButtonStyle(p, 10))
-                    .on("press", Msg.ClickedToggleTheme())
-                    .children(
-                      h.text
-                        .style({ fontSize: 11.5, fontWeight: "700", color: p.ink })
-                        .children(screen.theme === "paper" ? "Dark" : "Light")
-                    )
+                  actionButton(h, p, {
+                    label: screen.theme === "paper" ? "Dark" : "Light",
+                    testId: "theme.toggle",
+                    ariaLabel: "Toggle theme",
+                    paddingHorizontal: 10,
+                    fontSize: 11.5,
+                    fontWeight: "700",
+                    onPress: Msg.ClickedToggleTheme()
+                  })
                 )
             ),
           h.box
@@ -117,60 +129,33 @@ export const tabsBoardView = (
               h.box
                 .style({ flexDirection: "row", alignItems: "center", gap: 10 })
                 .children(
-                  canUndo &&
-                    h.button
-                      .testId("board.undo")
-                      .ariaLabel("Undo last board change")
-                      .on("press", Msg.ClickedUndo())
-                      .children(
-                        h.text
-                          .style({ fontSize: 12, fontWeight: "700", color: p.ink })
-                          .children("Undo")
-                      ),
-                  canRedo &&
-                    h.button
-                      .testId("board.redo")
-                      .ariaLabel("Redo board change")
-                      .on("press", Msg.ClickedRedo())
-                      .children(
-                        h.text
-                          .style({ fontSize: 12, fontWeight: "700", color: p.ink })
-                          .children("Redo")
-                      ),
-                  h.button
-                    .testId("board.reset")
-                    .ariaLabel("Reset demo board")
-                    .on("press", Msg.ClickedResetDemo())
-                    .children(
-                      h.text
-                        .style({ fontSize: 12, fontWeight: "700", color: p.accent })
-                        .children("Reset")
-                    )
+                  screen.canUndo &&
+                    actionButton(h, p, {
+                      label: "Undo",
+                      variant: "ghost",
+                      testId: "board.undo",
+                      ariaLabel: "Undo last board change",
+                      onPress: Msg.ClickedUndo()
+                    }),
+                  screen.canRedo &&
+                    actionButton(h, p, {
+                      label: "Redo",
+                      variant: "ghost",
+                      testId: "board.redo",
+                      ariaLabel: "Redo board change",
+                      onPress: Msg.ClickedRedo()
+                    }),
+                  actionButton(h, p, {
+                    label: "Reset",
+                    variant: "ghost",
+                    testId: "board.reset",
+                    ariaLabel: "Reset demo board",
+                    textColor: p.accent,
+                    onPress: Msg.ClickedResetDemo()
+                  })
                 )
             ),
-          h.box
-            .testId("board.progress")
-            .role(velocity.rootAttrs.role ?? "progressbar")
-            .ariaLabel(
-              `${velocity.rootAttrs["aria-label"] ?? "Sprint velocity"} ${velocity.text}`
-            )
-            .ariaValueNow(velocity.percent)
-            .ariaValueMin(0)
-            .ariaValueMax(100)
-            .style({
-              height: 5,
-              borderRadius: 999,
-              backgroundColor: p.surfaceAlt,
-              overflow: "hidden"
-            })
-            .children(
-              h.box.style({
-                width: `${velocity.percent}%`,
-                height: "100%",
-                borderRadius: 999,
-                backgroundColor: p.pine
-              })
-            )
+          velocityProgressBar(h, velocity, p, { compact: true })
         ),
       // 4-lane @ui-sdk/core Tabs bar
       laneTabs !== undefined &&
@@ -188,8 +173,9 @@ export const tabsBoardView = (
           })
           .children(
             laneTabs.items.map((tab) => {
-              const entry = lanes.find((l) => l.lane.id === tab.value)!
-              const { lane, stats: lStats, wipText } = entry
+              const { lane, stats: lStats, wipText } = lanes.find(
+                (l) => l.lane.id === tab.value
+              )!
               const isActive = tab.selected
               const laneOver = lStats.overWip
               return h.button
@@ -254,16 +240,7 @@ export const tabsBoardView = (
             .autoCorrect(false)
             .autoCapitalize("none")
             .on("changeText", ({ text }) => Msg.TypedSearchQuery({ text }))
-            .style({
-              fontSize: 14,
-              paddingHorizontal: 12,
-              paddingVertical: 9,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: p.border,
-              backgroundColor: p.surface,
-              color: p.ink
-            }),
+            .style(mobileInputStyle),
           segmentedControl(h, priorityControl, p, {
             testIdPrefix: "filter",
             current: screen.priorityFilter,
@@ -292,37 +269,22 @@ export const tabsBoardView = (
             .autoCapitalize("sentences")
             .on("changeText", ({ text }) => Msg.TypedQuickTitle({ text }))
             .on("submit", Msg.SubmittedQuickCard())
-            .style({
-              flex: 1,
-              fontSize: 14,
-              paddingHorizontal: 12,
-              paddingVertical: 9,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: p.border,
-              backgroundColor: p.surface,
-              color: p.ink
-            }),
-          h.button
-            .testId("quick.submit")
-            .ariaLabel("Add card")
-            .disabled(isSubmittingQuickCard)
-            .on("press", Msg.SubmittedQuickCard())
-            .style({
-              paddingHorizontal: 14,
-              paddingVertical: 9,
-              borderRadius: 8,
-              backgroundColor: p.accent,
-              justifyContent: "center"
-            })
-            .children(
-              h.text
-                .style({ fontSize: 13, fontWeight: "700", color: p.accentInk })
-                .children(isSubmittingQuickCard ? "Adding..." : "+ Add")
-            )
+            .style({ ...mobileInputStyle, flex: 1 }),
+          actionButton(h, p, {
+            label: isSubmittingQuickCard ? "Adding..." : "+ Add",
+            variant: "primary",
+            testId: "quick.submit",
+            ariaLabel: "Add card",
+            disabled: isSubmittingQuickCard,
+            paddingHorizontal: 14,
+            paddingVertical: 9,
+            fontSize: 13,
+            style: { borderRadius: 8, borderWidth: 0, justifyContent: "center" },
+            onPress: Msg.SubmittedQuickCard()
+          })
         ),
       // WIP warning
-      overWip &&
+      activeLane.stats.overWip &&
         h.box
           .testId("lane.wipWarning")
           .style({
@@ -341,37 +303,13 @@ export const tabsBoardView = (
               )
           ),
       // Notice banner
-      NoticeStateSchema.guards.Visible(screen.notice) &&
-        (() => {
-          const notice = screen.notice
-          const isError = notice.tone === "error"
-          const bg = isError ? p.accentSoft : p.pineSoft
-          const fg = isError ? p.accent : p.pine
-          return h.button
-            .testId("board.notice")
-            .role(isError ? "alert" : "status")
-            .ariaLabel(notice.announcement)
-            .on("press", Msg.DismissedNotice())
-            .style({
-              marginHorizontal: 16,
-              marginBottom: 8,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 6,
-              backgroundColor: bg,
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center"
-            })
-            .children(
-              h.text
-                .style({ fontSize: 12, fontWeight: "600", color: fg })
-                .children(notice.message),
-              h.text
-                .style({ fontSize: 11, fontWeight: "700", color: fg })
-                .children("OK")
-            )
-        })(),
+      noticeBanner(h, screen.notice, p, {
+        testId: "board.notice",
+        onDismiss: Msg.DismissedNotice(),
+        dismissLabel: "OK",
+        wholeBannerDismiss: true,
+        style: { marginHorizontal: 16, marginBottom: 8 }
+      }),
       // Active lane scroll view
       h.scroll
         .testId("board.scroll")
@@ -383,25 +321,10 @@ export const tabsBoardView = (
             .style({ flexDirection: "column", gap: 10, paddingBottom: 24 })
             .children(
               visibleCards.length === 0
-                ? h.box
-                    .testId("board.empty")
-                    .style({
-                      padding: 28,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: p.border,
-                      backgroundColor: p.surface,
-                      alignItems: "center"
-                    })
-                    .children(
-                      h.text
-                        .style({ fontSize: 14, fontWeight: "600", color: p.inkMuted })
-                        .children(
-                          activeLane.stats.count > 0
-                            ? `${activeLane.stats.count} ${activeLane.stats.count === 1 ? "card" : "cards"} hidden by filter`
-                            : `No cards in ${activeLaneMeta.title}`
-                        )
-                    )
+                ? emptyLaneBox(h, activeLane.stats.count, activeLaneMeta.title, p, {
+                    testId: "board.empty",
+                    spacious: true
+                  })
                 : visibleCards.map((card) =>
                     cardItem(h, card, p, {
                       compact: false,

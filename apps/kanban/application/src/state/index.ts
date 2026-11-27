@@ -37,6 +37,7 @@ export {
   PositiveRequestIdSchema,
   WorkspaceModeSchema,
   initialState,
+  isComposerWorkspaceMode,
   makeVisibleNotice,
   parseNonEmptyText,
   type InitialStateParams,

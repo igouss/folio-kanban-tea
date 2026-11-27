@@ -5,9 +5,7 @@ import {
   STORY_POINTS,
   boardVelocity,
   formatWipCount,
-  groupCardIdsByLane,
   laneStats,
-  wipLimitsByLane,
   type BoardVelocity,
   type KanbanCard,
   type LaneId,
@@ -27,10 +25,6 @@ import {
   type StringAttrs,
   type TabsSnapshot
 } from "@universal-ui/behaviors"
-import {
-  readKanbanBoard,
-  type KanbanBoardSnapshot
-} from "./boardPrimitive.ts"
 import { filterAndRankCards } from "./search.ts"
 
 export type PriorityFilterLabelStyle = "default" | "short" | "long"
@@ -43,7 +37,6 @@ export interface DeriveBoardViewOptions<T extends KanbanCard = KanbanCard> {
   readonly priorityLabelStyle?: PriorityFilterLabelStyle
   readonly activeLane?: LaneId
   readonly boardLabel?: string
-  readonly selectedCardIds?: ReadonlyArray<string>
 }
 
 export interface LaneViewSnapshot<T extends KanbanCard = KanbanCard> {
@@ -60,7 +53,7 @@ export interface BoardViewSnapshot<T extends KanbanCard = KanbanCard> {
   readonly velocity: BoardVelocity
   readonly progress: ProgressSnapshot
   readonly priorityControl: SegmentedControlSnapshot<PriorityFilter>
-  readonly board: KanbanBoardSnapshot
+  readonly board: { readonly rootAttrs: StringAttrs }
   readonly visibleCards: ReadonlyArray<T>
   readonly lanes: ReadonlyArray<LaneViewSnapshot<T>>
   readonly laneTabs: TabsSnapshot<LaneId> | undefined
@@ -91,8 +84,7 @@ export const deriveBoardView = <T extends KanbanCard>(
     priorityFilter,
     priorityLabelStyle = "default",
     activeLane: activeLaneId,
-    boardLabel = "Folio Kanban board",
-    selectedCardIds
+    boardLabel = "Folio Kanban board"
   } = options
 
   const velocity = boardVelocity(cards)
@@ -116,21 +108,10 @@ export const deriveBoardView = <T extends KanbanCard>(
 
   const visibleCards = filterAndRankCards(cards, searchQuery, priorityFilter)
 
-  const board = readKanbanBoard({
-    id: `${idPrefix}-kanban-board`,
-    label: boardLabel,
-    lists: groupCardIdsByLane(cards),
-    lanes: LANES.map((lane) => ({ id: lane.id, label: `${lane.title} column` })),
-    cards: visibleCards.map((card) => ({ id: card.id, lane: card.lane })),
-    wipLimits: wipLimitsByLane(),
-    ...(selectedCardIds !== undefined ? { selected: selectedCardIds } : {})
-  })
-
   const lanes: ReadonlyArray<LaneViewSnapshot<T>> = LANES.map((lane) => {
     const stats = laneStats(cards, lane.id)
     const laneVisible = visibleCards.filter((card) => card.lane === lane.id)
     const visiblePoints = laneVisible.reduce((sum, card) => sum + card.points, 0)
-    const lanePart = board.lanes[lane.id]
     return {
       lane,
       stats,
@@ -138,10 +119,12 @@ export const deriveBoardView = <T extends KanbanCard>(
       visiblePoints,
       wipText: formatWipCount(stats.count, lane.wipLimit),
       visibleWipText: formatWipCount(laneVisible.length, lane.wipLimit),
-      laneAttrs: lanePart?.attrs ?? {
+      laneAttrs: {
         role: "list",
         "aria-label": `${lane.title} column`,
-        "data-lane": lane.id
+        "data-lane": lane.id,
+        "data-count": String(stats.count),
+        ...(stats.overWip ? { "data-over-wip": "" } : {})
       }
     }
   })
@@ -167,7 +150,9 @@ export const deriveBoardView = <T extends KanbanCard>(
     velocity,
     progress,
     priorityControl,
-    board,
+    board: {
+      rootAttrs: { role: "region", "aria-label": boardLabel }
+    },
     visibleCards,
     lanes,
     laneTabs,

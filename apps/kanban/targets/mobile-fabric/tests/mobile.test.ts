@@ -208,6 +208,26 @@ describe("Folio Kanban Mobile (@folio/kanban-app on @universal-ui/host-fabric)",
     tap("editor.save")
     await settle(hasText("Saved FOL-101."))
     expect(hasText("Effect UI Fabric verified")()).toBe(true)
+
+    // Reopen editor, test back navigation, then delete card & reset demo
+    tap("card.open.card-101")
+    await settle(() => byTestID("editor.back") !== undefined)
+    tap("editor.back")
+    await settle(() => byTestID("board.scroll") !== undefined)
+
+    tap("card.open.card-101")
+    await settle(() => byTestID("editor.delete") !== undefined)
+    tap("editor.delete")
+    await settle(hasText("Deleted FOL-101."))
+    expect(byTestID("card.card-101")).toBeUndefined()
+
+    // Tap notice banner to dismiss, toggle theme, and reset demo
+    tap("board.notice")
+    await settle(() => byTestID("board.notice") === undefined)
+    tap("theme.toggle")
+    await settle(hasText("Light"))
+    tap("board.reset")
+    await settle(hasText("Reset board to default cards."))
     app.dispose()
   })
 

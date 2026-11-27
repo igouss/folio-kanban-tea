@@ -23,9 +23,11 @@ import {
 } from "../../state/index.ts"
 import { paletteFor } from "../theme.ts"
 import {
+  actionButton,
   fieldLabel,
-  secondaryButtonStyle,
-  segmentedControl
+  noticeBanner,
+  segmentedControl,
+  textInputStyle
 } from "../views/controls.ts"
 
 export const CardEditorMode = Schema.Literals(["modal", "screen"])
@@ -65,6 +67,8 @@ export const CardEditorEvents = UiSchema.TaggedEnum({
 export type CardEditorEvents = typeof CardEditorEvents.Type
 
 const HIDDEN_NOTICE: NoticeState = { _tag: "Hidden" }
+const cancelOnEscape = ({ key }: { readonly key: string }) =>
+  key === "Escape" ? CardEditorMessage.ClickedCancel() : undefined
 
 /**
  * Self-contained @effect/ui child component for editing a Kanban card.
@@ -83,38 +87,18 @@ export const CardEditor = Ui.component({
     notice: HIDDEN_NOTICE
   }),
 
-  update: ($, message) =>
-    CardEditorMessage.match(message, {
-      TypedTitle: ({ text }) =>
-        $.set({
-          ...$.model,
-          draft: { ...$.model.draft, title: text }
-        }),
-      TypedNotes: ({ text }) =>
-        $.set({
-          ...$.model,
-          draft: { ...$.model.draft, notes: text }
-        }),
+  update: ($, message) => {
+    const patchDraft = (patch: Partial<CardEditorModel["draft"]>) =>
+      $.set({ ...$.model, draft: { ...$.model.draft, ...patch } })
+
+    return CardEditorMessage.match(message, {
+      TypedTitle: ({ text }) => patchDraft({ title: text }),
+      TypedNotes: ({ text }) => patchDraft({ notes: text }),
       TypedAssignee: ({ text }) =>
-        $.set({
-          ...$.model,
-          draft: { ...$.model.draft, assignee: normalizeDraftAssignee(text) }
-        }),
-      SelectedLane: ({ lane }) =>
-        $.set({
-          ...$.model,
-          draft: { ...$.model.draft, lane }
-        }),
-      SelectedPriority: ({ priority }) =>
-        $.set({
-          ...$.model,
-          draft: { ...$.model.draft, priority }
-        }),
-      SelectedPoints: ({ points }) =>
-        $.set({
-          ...$.model,
-          draft: { ...$.model.draft, points }
-        }),
+        patchDraft({ assignee: normalizeDraftAssignee(text) }),
+      SelectedLane: ({ lane }) => patchDraft({ lane }),
+      SelectedPriority: ({ priority }) => patchDraft({ priority }),
+      SelectedPoints: ({ points }) => patchDraft({ points }),
       ClickedSave: () => {
         const check = validateCardTitle($.model.draft.title)
         if (!check.ok) {
@@ -123,20 +107,15 @@ export const CardEditor = Ui.component({
             notice: makeVisibleNotice("error", check.error)
           })
         }
-        return $.set({
-          ...$.model,
-          notice: HIDDEN_NOTICE
-        }).emit(
-          CardEditorEvents.Saved({
-            draft: $.model.draft,
-            title: check.title
-          })
+        return $.set({ ...$.model, notice: HIDDEN_NOTICE }).emit(
+          CardEditorEvents.Saved({ draft: $.model.draft, title: check.title })
         )
       },
       ClickedCancel: () => $.emit(CardEditorEvents.Cancelled()),
       ClickedDelete: () =>
         $.emit(CardEditorEvents.Deleted({ cardId: $.model.draft.cardId }))
-    }),
+    })
+  },
 
   view: (h, model) => {
     const { draft, notice } = model
@@ -158,7 +137,6 @@ export const CardEditor = Ui.component({
         padding: isModal ? 20 : 16
       })
       .children(
-        // Header
         h.box
           .style({
             flexDirection: "row",
@@ -168,63 +146,34 @@ export const CardEditor = Ui.component({
           })
           .children(
             h.box
-              .style({
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 8
-              })
+              .style({ flexDirection: "row", alignItems: "center", gap: 8 })
               .children(
                 !isModal &&
-                  h.button
-                    .testId("editor.back")
-                    .ariaLabel("Back to board")
-                    .style(secondaryButtonStyle(p, 10))
-                    .on("press", CardEditorMessage.ClickedCancel())
-                    .children(
-                      h.text
-                        .style({ fontSize: 12, fontWeight: "700", color: p.ink })
-                        .children("← Board")
-                    ),
+                  actionButton(h, p, {
+                    label: "← Board",
+                    testId: "editor.back",
+                    ariaLabel: "Back to board",
+                    paddingHorizontal: 10,
+                    fontWeight: "700",
+                    onPress: CardEditorMessage.ClickedCancel()
+                  }),
                 h.text
                   .style({ fontSize: 16, fontWeight: "700", color: p.ink })
                   .children(`Edit ${draft.code}`)
               ),
-            h.button
-              .testId("editor.close")
-              .ariaLabel("Close editor")
-              .style(secondaryButtonStyle(p, 10))
-              .on("press", CardEditorMessage.ClickedCancel())
-              .children(
-                h.text
-                  .style({ fontSize: 12, fontWeight: "600", color: p.inkSoft })
-                  .children("Cancel")
-              )
+            actionButton(h, p, {
+              label: "Cancel",
+              testId: "editor.close",
+              ariaLabel: "Close editor",
+              paddingHorizontal: 10,
+              textColor: p.inkSoft,
+              onPress: CardEditorMessage.ClickedCancel()
+            })
           ),
-        // Validation / info notice inside editor
-        NoticeStateSchema.guards.Visible(notice) &&
-          (() => {
-            const isError = notice.tone === "error"
-            return h.box
-              .testId("editor.notice")
-              .role(isError ? "alert" : "status")
-              .ariaLabel(notice.announcement)
-              .style({
-                paddingVertical: 8,
-                paddingHorizontal: 10,
-                borderRadius: 6,
-                backgroundColor: isError ? p.accentSoft : p.pineSoft
-              })
-              .children(
-                h.text
-                  .style({
-                    fontSize: 12,
-                    fontWeight: "600",
-                    color: isError ? p.accent : p.pine
-                  })
-                  .children(notice.message)
-              )
-          })(),
-        // Title
+        noticeBanner(h, notice, p, {
+          testId: "editor.notice",
+          style: { paddingHorizontal: 10 }
+        }),
         fieldLabel(h, "Title", p),
         h.input
           .testId("editor.title")
@@ -232,23 +181,17 @@ export const CardEditor = Ui.component({
           .value(draft.title)
           .placeholder("Card title...")
           .placeholderColor(p.inkMuted)
-          .style({
-            width: "100%",
-            paddingVertical: 9,
-            paddingHorizontal: 12,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: p.rule,
-            backgroundColor: p.input,
-            color: p.ink,
-            fontSize: 14
-          })
+          .style(
+            textInputStyle(p, {
+              width: "100%",
+              paddingVertical: 9,
+              paddingHorizontal: 12,
+              fontSize: 14
+            })
+          )
           .on("changeText", ({ text }) => CardEditorMessage.TypedTitle({ text }))
           .on("submit", CardEditorMessage.ClickedSave())
-          .on("keyDown", ({ key }) =>
-            key === "Escape" ? CardEditorMessage.ClickedCancel() : undefined
-          ),
-        // Notes
+          .on("keyDown", cancelOnEscape),
         fieldLabel(h, "Notes", p),
         h.textarea
           .testId("editor.notes")
@@ -258,23 +201,16 @@ export const CardEditor = Ui.component({
           .placeholderColor(p.inkMuted)
           .minRows(3)
           .maxRows(5)
-          .style({
-            width: "100%",
-            minHeight: 76,
-            paddingVertical: 9,
-            paddingHorizontal: 12,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: p.rule,
-            backgroundColor: p.input,
-            color: p.ink,
-            fontSize: 13
-          })
+          .style(
+            textInputStyle(p, {
+              width: "100%",
+              minHeight: 76,
+              paddingVertical: 9,
+              paddingHorizontal: 12
+            })
+          )
           .on("changeText", ({ text }) => CardEditorMessage.TypedNotes({ text }))
-          .on("keyDown", ({ key }) =>
-            key === "Escape" ? CardEditorMessage.ClickedCancel() : undefined
-          ),
-        // Lane picker
+          .on("keyDown", cancelOnEscape),
         fieldLabel(h, "Lane", p),
         segmentedControl(h, controls.laneControl, p, {
           testIdPrefix: "editor.lane",
@@ -282,7 +218,6 @@ export const CardEditor = Ui.component({
           stretch: !isModal,
           onSelect: (lane) => CardEditorMessage.SelectedLane({ lane })
         }),
-        // Priority picker
         fieldLabel(h, "Priority", p),
         segmentedControl(h, controls.priorityControl, p, {
           testIdPrefix: "editor.priority",
@@ -291,12 +226,8 @@ export const CardEditor = Ui.component({
           stretch: !isModal,
           onSelect: (priority) => CardEditorMessage.SelectedPriority({ priority })
         }),
-        // Assignee & Story points
         h.box
-          .style({
-            flexDirection: isModal ? "row" : "column",
-            gap: 12
-          })
+          .style({ flexDirection: isModal ? "row" : "column", gap: 12 })
           .children(
             h.box
               .style({
@@ -314,26 +245,14 @@ export const CardEditor = Ui.component({
                   .placeholderColor(p.inkMuted)
                   .autoCapitalize("characters")
                   .autoCorrect(false)
-                  .style({
-                    width: "100%",
-                    paddingVertical: 8,
-                    paddingHorizontal: 10,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: p.rule,
-                    backgroundColor: p.input,
-                    color: p.ink,
-                    fontSize: 13
-                  })
+                  .style(
+                    textInputStyle(p, { width: "100%", paddingHorizontal: 10 })
+                  )
                   .on("changeText", ({ text }) =>
                     CardEditorMessage.TypedAssignee({ text })
                   )
                   .on("submit", CardEditorMessage.ClickedSave())
-                  .on("keyDown", ({ key }) =>
-                    key === "Escape"
-                      ? CardEditorMessage.ClickedCancel()
-                      : undefined
-                  )
+                  .on("keyDown", cancelOnEscape)
               ),
             h.box
               .style({
@@ -354,7 +273,6 @@ export const CardEditor = Ui.component({
                 })
               )
           ),
-        // Footer buttons
         h.box
           .style({
             flexDirection: "row",
@@ -365,55 +283,31 @@ export const CardEditor = Ui.component({
             borderColor: p.rule
           })
           .children(
-            h.button
-              .testId("editor.delete")
-              .ariaLabel("Delete card")
-              .style({
-                paddingVertical: 8,
-                paddingHorizontal: 12,
-                borderRadius: 6,
-                borderWidth: 1,
-                borderColor: p.accent,
-                backgroundColor: p.accentSoft
-              })
-              .on("press", CardEditorMessage.ClickedDelete())
-              .children(
-                h.text
-                  .style({ fontSize: 12.5, fontWeight: "700", color: p.accent })
-                  .children("Delete card")
-              ),
-            h.button
-              .testId("editor.save")
-              .ariaLabel("Save card changes")
-              .style({
-                paddingVertical: 8,
-                paddingHorizontal: 16,
-                borderRadius: 6,
-                borderWidth: 1,
-                borderColor: p.accent,
-                backgroundColor: p.accent
-              })
-              .hover({ backgroundColor: p.accentHover })
-              .on("press", CardEditorMessage.ClickedSave())
-              .children(
-                h.text
-                  .style({
-                    fontSize: 12.5,
-                    fontWeight: "700",
-                    color: p.accentInk
-                  })
-                  .children("Save changes")
-              )
+            actionButton(h, p, {
+              label: "Delete card",
+              variant: "danger",
+              testId: "editor.delete",
+              ariaLabel: "Delete card",
+              fontSize: 12.5,
+              onPress: CardEditorMessage.ClickedDelete()
+            }),
+            actionButton(h, p, {
+              label: "Save changes",
+              variant: "primary",
+              testId: "editor.save",
+              ariaLabel: "Save card changes",
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              fontSize: 12.5,
+              onPress: CardEditorMessage.ClickedSave()
+            })
           )
       )
 
     if (!isModal) {
       return h.scroll
         .testId("editor.view")
-        .style({
-          flex: 1,
-          backgroundColor: p.canvas
-        })
+        .style({ flex: 1, backgroundColor: p.canvas })
         .children(
           h.box.collapsable(false).style({ paddingBottom: 28 }).children(formBody)
         )
