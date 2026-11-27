@@ -1,16 +1,15 @@
 import {
-  LANE_IDS,
   LANES,
-  PRIORITIES,
   adjacentLanes,
   laneTitle,
   priorityLabel,
 } from "@folio/kanban-core"
+import { LaneId, Priority } from "@folio/kanban-core/schema"
 import { Query } from "@effect/ui"
 import { Schema } from "effect"
 
-export const ColumnId = Schema.Literals(LANE_IDS)
-export type ColumnId = typeof ColumnId.Type
+export const ColumnId = LaneId
+export type ColumnId = LaneId
 
 export const COLUMNS = LANES.map((lane) => ({
   id: lane.id,
@@ -19,8 +18,8 @@ export const COLUMNS = LANES.map((lane) => ({
   ...(lane.wipLimit !== null ? { wipLimit: lane.wipLimit } : {})
 }))
 
-export const TaskPriority = Schema.Literals(PRIORITIES)
-export type TaskPriority = typeof TaskPriority.Type
+export const TaskPriority = Priority
+export type TaskPriority = Priority
 
 export const Task = Schema.Struct({
   id: Schema.String,

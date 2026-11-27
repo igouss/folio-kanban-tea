@@ -1,6 +1,14 @@
 import { UiSchema } from "@effect/ui"
+import {
+  KanbanCardSchema as Card,
+  LaneId,
+  Priority,
+  PriorityFilter,
+  ThemeMode
+} from "@folio/kanban-core/schema"
 import { Schema } from "effect"
-import { Card, LaneId, Priority, PriorityFilter, ThemeMode } from "./domain"
+
+export { Card, LaneId, Priority, PriorityFilter, ThemeMode }
 
 export const EditDraft = Schema.Struct({
   cardId: Schema.String,

@@ -2,12 +2,19 @@ const path = require('node:path')
 const { getDefaultConfig } = require('expo/metro-config')
 const { withTailwind } = require('@ng-native/tailwind/config.cjs')
 
-const sharedCore = path.resolve(__dirname, '../../packages/kanban-core')
+const workspaceRoot = path.resolve(__dirname, '../..')
 const config = getDefaultConfig(__dirname)
-config.watchFolders = [...(config.watchFolders ?? []), sharedCore]
+config.watchFolders = [...(config.watchFolders ?? []), workspaceRoot]
+config.resolver.nodeModulesPaths = [
+  path.resolve(__dirname, 'node_modules'),
+  path.resolve(workspaceRoot, 'node_modules'),
+]
 
 // Resolve @effect/ui Node subpath imports (#dev / #hot) for Hermes/Metro
-const effectUiDir = path.resolve(__dirname, 'node_modules/@effect/ui/dist')
+const effectUiDir = path.join(
+  path.dirname(require.resolve('@effect/ui/package.json')),
+  'dist',
+)
 const originalResolveRequest = config.resolver.resolveRequest
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (moduleName === '#dev') {

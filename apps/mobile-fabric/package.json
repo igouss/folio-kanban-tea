@@ -1,6 +1,6 @@
 {
   "name": "@folio/mobile-fabric",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "main": "src/main.ts",
   "scripts": {
@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@main",
-    "@folio/effect-ui-fabric": "file:./packages/effect-ui-fabric",
-    "@folio/kanban-core": "file:../../packages/kanban-core",
+    "@folio/effect-ui-fabric": "*",
+    "@folio/kanban-core": "*",
     "@ng-native/fabric": "0.3.0",
     "effect": "^4.1.6",
     "expo": "~57.0.26",
@@ -30,7 +30,6 @@
     "@tailwindcss/cli": "^4.3.3",
     "@types/react": "~19.2.2",
     "tailwindcss": "^4.3.3",
-    "typescript": "~6.0.3",
     "vitest": "^5.0.0"
   }
 }

@@ -15,9 +15,9 @@ import {
   nextCardCode,
   removeCard,
   reorder
-} from "./domain.ts"
-import { BoardStorage } from "./storage.ts"
-import { boardView } from "./view/boardView.ts"
+} from "../domain/board.ts"
+import { BoardStorage } from "../services/storage.ts"
+import { boardView } from "../views/BoardView.ts"
 
 export const KanbanDesktopProps = Schema.Struct({
   initialBoard: Schema.OptionFromUndefinedOr(SavedBoard)

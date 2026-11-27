@@ -1,23 +1,14 @@
 import {
   DEFAULT_CARDS,
   LANES,
-  PRIORITIES,
-  PRIORITY_FILTERS,
-  THEME_MODES,
   matchesCard,
   nextCardCode as coreNextCardCode
 } from "@folio/kanban-core"
+import { Priority, PriorityFilter, ThemeMode } from "@folio/kanban-core/schema"
 import { Array, Option, Schema, pipe } from "effect"
 import { generateKeyBetween } from "fractional-indexing"
 
-export const Priority = Schema.Literals(PRIORITIES)
-export type Priority = typeof Priority.Type
-
-export const PriorityFilter = Schema.Literals(PRIORITY_FILTERS)
-export type PriorityFilter = typeof PriorityFilter.Type
-
-export const ThemeMode = Schema.Literals(THEME_MODES)
-export type ThemeMode = typeof ThemeMode.Type
+export { Priority, PriorityFilter, ThemeMode }
 
 export const Card = Schema.Struct({
   id: Schema.String,

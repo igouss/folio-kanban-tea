@@ -1,10 +1,13 @@
 import type { Gpui } from "@folio/effect-ui-gpui"
+import type { FolioPalette as Palette } from "@folio/kanban-core/theme"
 import { Option } from "effect"
-import type { KanbanDesktopMessage, KanbanDesktopModel } from "../board.ts"
-import { KanbanDesktopMessage as Msg } from "../board.ts"
-import { matchesFilter, type Column } from "../domain.ts"
-import type { Palette } from "../palette.ts"
-import { cardView } from "./cardView.ts"
+import type {
+  KanbanDesktopMessage,
+  KanbanDesktopModel
+} from "../components/KanbanDesktop.ts"
+import { KanbanDesktopMessage as Msg } from "../components/KanbanDesktop.ts"
+import { matchesFilter, type Column } from "../domain/board.ts"
+import { cardView } from "./CardView.ts"
 
 const addCardSection = (
   h: Gpui.H<KanbanDesktopMessage>,

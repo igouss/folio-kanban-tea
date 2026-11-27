@@ -1,11 +1,14 @@
 import type { Gpui } from "@folio/effect-ui-gpui"
+import { paletteFor } from "@folio/kanban-core/theme"
 import { Option } from "effect"
-import type { KanbanDesktopMessage, KanbanDesktopModel } from "../board.ts"
-import { KanbanDesktopMessage as Msg } from "../board.ts"
-import type { PriorityFilter } from "../domain.ts"
-import { paletteFor } from "../palette.ts"
-import { editorModal } from "./editorModal.ts"
-import { laneView } from "./laneView.ts"
+import type {
+  KanbanDesktopMessage,
+  KanbanDesktopModel
+} from "../components/KanbanDesktop.ts"
+import { KanbanDesktopMessage as Msg } from "../components/KanbanDesktop.ts"
+import type { PriorityFilter } from "../domain/board.ts"
+import { editorModal } from "./EditorModal.ts"
+import { laneView } from "./LaneView.ts"
 
 const PRIORITY_FILTERS: ReadonlyArray<{
   readonly value: PriorityFilter

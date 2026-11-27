@@ -1,7 +1,7 @@
 import { GpuiHost } from "@folio/effect-ui-gpui"
 import { Effect, Layer, Option } from "effect"
-import { KanbanDesktop, SaveBoard } from "./board.ts"
-import { BoardStorage, makeFileStorageLayer } from "./storage.ts"
+import { KanbanDesktop, SaveBoard } from "./components/KanbanDesktop.ts"
+import { BoardStorage, makeFileStorageLayer } from "./services/storage.ts"
 
 const loadInitialProps = Effect.gen(function* () {
   const storage = yield* BoardStorage

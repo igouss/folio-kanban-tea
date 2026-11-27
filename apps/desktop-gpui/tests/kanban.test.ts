@@ -3,8 +3,8 @@ import { describe, it } from "node:test"
 import { GpuiHost } from "@folio/effect-ui-gpui"
 import { createFakeGpuixRenderer } from "@folio/effect-ui-gpui/testing"
 import { Effect, Layer, Option } from "effect"
-import { KanbanDesktop, SaveBoard } from "../src/board.ts"
-import { makeMemoryStorageLayer } from "../src/storage.ts"
+import { KanbanDesktop, SaveBoard } from "../src/components/KanbanDesktop.ts"
+import { makeMemoryStorageLayer } from "../src/services/storage.ts"
 
 const tick = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 10))

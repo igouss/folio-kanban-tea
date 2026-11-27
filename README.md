@@ -62,12 +62,14 @@ This project demonstrates a radically different architectural path built entirel
 
 ### 2. Custom `@effect/ui` Native Vocabularies & Hosts
 `@effect/ui` separates its MVU runtime (`Component`, `UiSchema`, `Command`, `Subscription`, `Query`, `Head`, `Renderer`) from any specific UI target through `View.Vocabulary` and `Renderer.Host<Node>`:
-- **`@folio/effect-ui-gpui`** (`apps/desktop-gpui/packages/effect-ui-gpui`):
+- **`@folio/effect-ui-gpui`** (`packages/effect-ui-gpui`):
   - Defines a typed **`Gpui`** vocabulary (`Gpui.component`, `h.box`, `h.button`, `h.text`, `h.input`, `h.textarea`) with GPU-native `StyleDesc`, `.hover(...)`, `.active(...)`, controlled `.value(...)`, and typed events (`click`, `change`, `submit`, `keyDown`).
   - Implements `Renderer.Host<GpuiNode>` directly on `@gpuix/native`'s `createMutationQueue` — flushing every `@effect/ui` render into **a single batched NAPI-RS `applyBatch` FFI call per frame**, syncing `Head.title` directly to the native window titlebar, propagating inherited text styles to GPUI text nodes, and handling GPUI controlled-input reconciliation without any DOM or CSS shim.
-- **`@folio/effect-ui-fabric`** (`apps/mobile-fabric/packages/effect-ui-fabric`):
+- **`@folio/effect-ui-fabric`** (`packages/effect-ui-fabric`):
   - Defines a typed **`Fabric`** vocabulary (`Fabric.component`, `h.view`, `h.text`, `h.pressable`, `h.scrollView`, `h.textInput`) with `textParents: ["text"]` enforced by `@effect/ui`, React Native styles, Tailwind `@ng-native/tailwind` classes, and typed native events (`press`, `changeText`, `layout`, `scroll`).
   - Implements `Renderer.Host<EngineNode>` directly on `@ng-native/fabric`'s `Engine` — wiring Pressability touch responders (`engine.setResponder`), controlled `TextInput` `eventCount`/`setTextAndSelection` reconciliation, Android `ScrollView` `collapsable: false` safety, single-commit `engine.commit()` per flush, and an `@effect/ui` `Subscription.make` for native `AppState` lifecycle transitions.
+- **`@folio/kanban-core`** (`packages/kanban-core`):
+  - Exposes pure domain logic (`@folio/kanban-core`), shared Effect v4 Schemas (`@folio/kanban-core/schema`), and shared **Paper & Graphite** editorial design palettes (`@folio/kanban-core/theme`) consumed across all three delivery targets.
 
 ### 3. The Elm Architecture + Effect v4 End-to-End
 Every platform shares the exact same mental model and library (`@effect/ui` + `effect@^4.1.6`):
@@ -99,34 +101,40 @@ All 14 test suites run in ~2 seconds in Node with **no browser, no GPU window, a
 
 ```text
 .
-├── package.json                              # Root scripts for testing, type-checking, and launching every target
+├── .npmrc                        # Single workspace remote-package config
+├── package.json                  # npm workspaces (packages/*, apps/*) & root scripts
+├── tsconfig.base.json            # Shared strict + exactOptionalPropertyTypes config
 ├── packages/
-│   └── kanban-core/                          # @folio/kanban-core (pure shared domain)
+│   ├── kanban-core/              # @folio/kanban-core (pure domain, ./schema, ./theme)
+│   ├── effect-ui-gpui/           # @folio/effect-ui-gpui (@effect/ui Renderer.Host for Zed GPUI)
+│   └── effect-ui-fabric/         # @folio/effect-ui-fabric (@effect/ui Renderer.Host for RN Fabric)
 └── apps/
-    ├── web/                                  # @folio/web (@effect/ui + @effect/ui/html BrowserHost + Vite)
-    ├── desktop-gpui/                         # @folio/desktop-gpui (@effect/ui + Zed GPUI)
-    │   └── packages/effect-ui-gpui/          # @folio/effect-ui-gpui (custom @effect/ui Renderer.Host for @gpuix/native)
-    └── mobile-fabric/                        # @folio/mobile-fabric (@effect/ui + RN Fabric + Expo SDK 57)
-        └── packages/effect-ui-fabric/        # @folio/effect-ui-fabric (custom @effect/ui Renderer.Host for @ng-native/fabric)
+    ├── web/                      # @folio/web (@effect/ui/html BrowserHost + Vite)
+    │   ├── src/                  # main.ts, App.ts, routes.ts, domain/, services/, queries/, components/, pages/
+    │   └── tests/kanban.test.ts
+    ├── desktop-gpui/             # @folio/desktop-gpui (@effect/ui + Zed GPUI)
+    │   ├── src/                  # main.ts, domain/, services/, components/, views/
+    │   └── tests/kanban.test.ts
+    └── mobile-fabric/            # @folio/mobile-fabric (@effect/ui + RN Fabric + Expo SDK 57)
+        ├── src/                  # main.ts, domain/, components/, views/
+        └── tests/kanban.test.ts
 ```
 
 ---
 
 ## Quick Start
 
-### 1. Install dependencies per target
+### 1. Install all workspace dependencies once at the root
 
 ```bash
-npm --prefix apps/web install
-npm --prefix apps/desktop-gpui install
-npm --prefix apps/mobile-fabric install
+npm install
 ```
 
-### 2. Run all tests and type-checks across every target
+### 2. Run all tests and type-checks across every workspace
 
 ```bash
 npm test          # Runs core (3) + web (6) + desktop-gpui (1 e2e) + mobile-fabric (4)
-npm run typecheck # Strict + exactOptionalPropertyTypes check across web, desktop-gpui, and mobile-fabric
+npm run typecheck # Strict + exactOptionalPropertyTypes check across core, web, desktop-gpui, and mobile-fabric
 ```
 
 ### 3. Launch each delivery platform

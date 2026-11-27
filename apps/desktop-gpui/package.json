@@ -1,17 +1,17 @@
 {
   "name": "@folio/desktop-gpui",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
-    "start": "node src/app.ts",
+    "start": "node src/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts"
   },
   "dependencies": {
     "@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@main",
-    "@folio/effect-ui-gpui": "file:./packages/effect-ui-gpui",
-    "@folio/kanban-core": "file:../../packages/kanban-core",
+    "@folio/effect-ui-gpui": "*",
+    "@folio/kanban-core": "*",
     "@gpuix/native": "0.10.0",
     "effect": "^4.1.6",
     "fractional-indexing": "4.0.0"
@@ -19,9 +19,5 @@
   "optionalDependencies": {
     "@gpuix/native-darwin-arm64": "0.10.0",
     "@gpuix/native-linux-x64-gnu": "0.10.0"
-  },
-  "devDependencies": {
-    "@types/node": "^25.0.0",
-    "typescript": "5.9.3"
   }
 }

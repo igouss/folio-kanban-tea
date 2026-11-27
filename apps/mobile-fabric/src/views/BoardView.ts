@@ -1,13 +1,13 @@
 import type { Fabric } from "@folio/effect-ui-fabric"
+import { LANES, matchesCard, type PriorityFilter } from "@folio/kanban-core"
+import { paletteFor, type FolioPalette as Palette } from "@folio/kanban-core/theme"
 import {
   KanbanMobileMessage as Msg,
   type KanbanMobileMessage,
   type KanbanMobileModel
-} from "./schema"
-import { LANES, matchesCard, type PriorityFilter } from "./domain"
-import { cardRow } from "./view/cardRow"
-import { detailView } from "./view/detailView"
-import { paletteFor, type Palette } from "./view/palette"
+} from "../domain/schema"
+import { cardRow } from "./CardRow"
+import { detailView } from "./DetailView"
 
 const PRIORITY_FILTERS: ReadonlyArray<{
   readonly value: PriorityFilter
@@ -152,7 +152,7 @@ const boardView = (
             return h.pressable
               .key(lane.id)
               .testID(`lane.tab.${lane.id}`)
-              .accessibilityLabel(`${lane.label} lane, ${count} cards`)
+              .accessibilityLabel(`${lane.title} lane, ${count} cards`)
               .on("press", Msg.SelectedLane({ lane: lane.id }))
               .style({
                 flex: 1,
@@ -175,7 +175,7 @@ const boardView = (
                     fontWeight: "700",
                     color: isActive ? p.surface : p.ink
                   })
-                  .children(lane.shortLabel),
+                  .children(lane.shortTitle),
                 h.text
                   .style({
                     fontSize: 11,
@@ -258,9 +258,9 @@ const boardView = (
         .children(
           h.textInput
             .testID("quick.input")
-            .accessibilityLabel(`New card in ${activeLaneMeta.label}`)
+            .accessibilityLabel(`New card in ${activeLaneMeta.title}`)
             .value(model.quickTitle)
-            .placeholder(`Quick add to ${activeLaneMeta.label}...`)
+            .placeholder(`Quick add to ${activeLaneMeta.title}...`)
             .autoCorrect(true)
             .autoCapitalize("sentences")
             .on("changeText", ({ text }) => Msg.TypedQuickTitle({ text }))
@@ -307,7 +307,7 @@ const boardView = (
             h.text
               .style({ fontSize: 12, fontWeight: "700", color: p.accent })
               .children(
-                `WIP limit exceeded in ${activeLaneMeta.label} (${laneAllCards.length}/${activeLaneMeta.wipLimit})`
+                `WIP limit exceeded in ${activeLaneMeta.title} (${laneAllCards.length}/${activeLaneMeta.wipLimit})`
               )
           ),
       model.statusBanner.length > 0 &&
@@ -355,7 +355,7 @@ const boardView = (
                     .children(
                       h.text
                         .style({ fontSize: 14, fontWeight: "600", color: p.inkMuted })
-                        .children(`No cards in ${activeLaneMeta.label}`)
+                        .children(`No cards in ${activeLaneMeta.title}`)
                     )
                 : visibleCards.map((card) => cardRow(h, card, p))
             )

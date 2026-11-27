@@ -1,11 +1,11 @@
 import type { Fabric } from "@folio/effect-ui-fabric"
+import { LANES, type Priority } from "@folio/kanban-core"
+import type { FolioPalette as Palette } from "@folio/kanban-core/theme"
 import {
   KanbanMobileMessage as Msg,
   type EditDraft,
   type KanbanMobileMessage
-} from "../schema"
-import { LANES, type Priority } from "../domain"
-import type { Palette } from "./palette"
+} from "../domain/schema"
 
 const PRIORITIES: ReadonlyArray<{
   readonly value: Priority
@@ -142,7 +142,7 @@ export const detailView = (
                                 fontWeight: "700",
                                 color: active ? p.surface : p.ink
                               })
-                              .children(lane.shortLabel)
+                              .children(lane.shortTitle)
                           )
                       })
                     )

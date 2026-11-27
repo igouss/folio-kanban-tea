@@ -9,7 +9,7 @@ import {
 import { Engine } from "@ng-native/fabric"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import tailwind from "../.tailwind/app.tailwind.js"
-import { KanbanMobile } from "./app"
+import { KanbanMobile } from "../src/components/KanbanMobile"
 
 beforeEach(() => {
   fakeAppState.set("active")

@@ -1,8 +1,11 @@
 import type { Gpui } from "@folio/effect-ui-gpui"
-import type { KanbanDesktopMessage, KanbanDesktopModel } from "../board.ts"
-import { KanbanDesktopMessage as Msg } from "../board.ts"
-import type { EditDraft, Priority } from "../domain.ts"
-import type { Palette } from "../palette.ts"
+import type { FolioPalette as Palette } from "@folio/kanban-core/theme"
+import type {
+  KanbanDesktopMessage,
+  KanbanDesktopModel
+} from "../components/KanbanDesktop.ts"
+import { KanbanDesktopMessage as Msg } from "../components/KanbanDesktop.ts"
+import type { EditDraft, Priority } from "../domain/board.ts"
 
 const PRIORITIES: ReadonlyArray<{
   readonly value: Priority

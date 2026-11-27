@@ -1,8 +1,11 @@
 import type { Gpui } from "@folio/effect-ui-gpui"
-import type { KanbanDesktopMessage, KanbanDesktopModel } from "../board.ts"
-import { KanbanDesktopMessage as Msg } from "../board.ts"
-import type { Card } from "../domain.ts"
-import { priorityColors, type Palette } from "../palette.ts"
+import { priorityColors, type FolioPalette as Palette } from "@folio/kanban-core/theme"
+import type {
+  KanbanDesktopMessage,
+  KanbanDesktopModel
+} from "../components/KanbanDesktop.ts"
+import { KanbanDesktopMessage as Msg } from "../components/KanbanDesktop.ts"
+import type { Card } from "../domain/board.ts"
 
 export const cardView = (
   h: Gpui.H<KanbanDesktopMessage>,

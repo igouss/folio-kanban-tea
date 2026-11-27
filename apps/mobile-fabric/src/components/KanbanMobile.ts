@@ -4,20 +4,25 @@ import {
   DEFAULT_CARDS,
   createCard,
   deleteCard,
-  laneLabel,
+  laneTitle as laneLabel,
   moveCard,
-  nextCode,
+  nextCardCode as nextCode,
   updateCard
-} from "./domain"
+} from "@folio/kanban-core"
 import {
   type EditDraft,
   KanbanMobileMessage,
   KanbanMobileModel,
   type Screen
-} from "./schema"
-import { view } from "./view"
+} from "../domain/schema"
+import { view } from "../views/BoardView"
 
-export { EditDraft, KanbanMobileMessage, KanbanMobileModel, Screen } from "./schema"
+export {
+  EditDraft,
+  KanbanMobileMessage,
+  KanbanMobileModel,
+  Screen
+} from "../domain/schema"
 
 const mapDraft = (
   screen: Screen,

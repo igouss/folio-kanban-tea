@@ -1,10 +1,10 @@
 import type { Fabric } from "@folio/effect-ui-fabric"
+import { adjacentLanes, laneTitle as laneLabel, type KanbanCard as Card } from "@folio/kanban-core"
+import { priorityColors, type FolioPalette as Palette } from "@folio/kanban-core/theme"
 import {
   KanbanMobileMessage as Msg,
   type KanbanMobileMessage
-} from "../schema"
-import { adjacentLanes, laneLabel, type Card } from "../domain"
-import { priorityColors, type Palette } from "./palette"
+} from "../domain/schema"
 
 export const cardRow = (
   h: Fabric.H<KanbanMobileMessage>,
