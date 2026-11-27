@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
+import { initialPointerState, transitionPointer } from "../src/fsm.ts"
 import { uiStyleToCss } from "../src/index.ts"
 
 describe("@universal-ui/host-web", () => {
@@ -43,5 +44,29 @@ describe("@universal-ui/host-web", () => {
     assert.equal(styledBtn["borderWidth"], "1px")
     assert.equal(styledBtn["padding"], undefined)
     assert.equal(styledBtn["paddingLeft"], "10px")
+  })
+
+  it("enforces PointerState FSM transitions and blocks interaction while Disabled", () => {
+    let state = initialPointerState
+    assert.equal(state._tag, "Idle")
+
+    state = transitionPointer(state, "enter")
+    assert.equal(state._tag, "Hovered")
+
+    state = transitionPointer(state, "down")
+    assert.equal(state._tag, "Pressed")
+
+    state = transitionPointer(state, "up")
+    assert.equal(state._tag, "Hovered")
+
+    state = transitionPointer(state, "disable")
+    assert.equal(state._tag, "Disabled")
+
+    // Hover/press while disabled are ignored
+    assert.equal(transitionPointer(state, "enter")._tag, "Disabled")
+    assert.equal(transitionPointer(state, "down")._tag, "Disabled")
+
+    state = transitionPointer(state, "enable")
+    assert.equal(state._tag, "Idle")
   })
 })

@@ -12,8 +12,12 @@ export const boardView = (
 ) => {
   const p = paletteFor(screen.theme)
   const isTabs = screen.layout === "tabs"
+  const editorDraft =
+    screen.workspaceMode._tag === "EditingCard"
+      ? screen.workspaceMode.draft
+      : undefined
 
-  if (isTabs && screen.editorDraft !== undefined) {
+  if (isTabs && editorDraft !== undefined) {
     return h.box
       .testId("board.root")
       .style({
@@ -23,7 +27,7 @@ export const boardView = (
         paddingTop: screen.topInset,
         backgroundColor: p.canvas
       })
-      .children(editorView(h, screen.editorDraft, screen.notice, p, "screen"))
+      .children(editorView(h, editorDraft, screen.notice, p, "screen"))
   }
 
   return h.box
@@ -43,7 +47,7 @@ export const boardView = (
         ? tabsBoardView(h, screen, p)
         : columnsBoardView(h, screen, p),
       !isTabs &&
-        screen.editorDraft !== undefined &&
-        editorView(h, screen.editorDraft, screen.notice, p, "modal")
+        editorDraft !== undefined &&
+        editorView(h, editorDraft, screen.notice, p, "modal")
     )
 }

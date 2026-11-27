@@ -19,36 +19,54 @@ import * as Schema from "effect/Schema"
 export const CardDensity = Schema.Literals(["comfortable", "compact"])
 export type CardDensity = typeof CardDensity.Type
 
-const ComposerClosedSchema = Schema.Struct({
-  _tag: Schema.Literal("Closed")
+const WorkspaceIdleSchema = Schema.Struct({
+  _tag: Schema.Literal("Idle")
 })
 
-const ComposerOpenSchema = Schema.Struct({
-  _tag: Schema.Literal("Open"),
+const WorkspaceComposingSchema = Schema.Struct({
+  _tag: Schema.Literal("Composing"),
   lane: LaneId,
   title: Schema.String
 })
 
-export const ComposerStateSchema = Schema.Union([
-  ComposerClosedSchema,
-  ComposerOpenSchema
-])
-export type ComposerState = typeof ComposerStateSchema.Type
-
-const EditorClosedSchema = Schema.Struct({
-  _tag: Schema.Literal("Closed")
+const WorkspaceSubmittingCardSchema = Schema.Struct({
+  _tag: Schema.Literal("SubmittingCard"),
+  lane: LaneId,
+  title: Schema.String
 })
 
-const EditorOpenSchema = Schema.Struct({
-  _tag: Schema.Literal("Open"),
+const WorkspaceEditingCardSchema = Schema.Struct({
+  _tag: Schema.Literal("EditingCard"),
   draft: CardDraftSchema
 })
 
-export const EditorStateSchema = Schema.Union([
-  EditorClosedSchema,
-  EditorOpenSchema
+export const WorkspaceModeSchema = Schema.Union([
+  WorkspaceIdleSchema,
+  WorkspaceComposingSchema,
+  WorkspaceSubmittingCardSchema,
+  WorkspaceEditingCardSchema
 ])
-export type EditorState = typeof EditorStateSchema.Type
+export type WorkspaceMode = typeof WorkspaceModeSchema.Type
+
+export const NoticeTone = Schema.Literals(["info", "error"])
+export type NoticeTone = typeof NoticeTone.Type
+
+const NoticeHiddenSchema = Schema.Struct({
+  _tag: Schema.Literal("Hidden")
+})
+
+const NoticeVisibleSchema = Schema.Struct({
+  _tag: Schema.Literal("Visible"),
+  tone: NoticeTone,
+  message: Schema.String,
+  announcement: Schema.String
+})
+
+export const NoticeStateSchema = Schema.Union([
+  NoticeHiddenSchema,
+  NoticeVisibleSchema
+])
+export type NoticeState = typeof NoticeStateSchema.Type
 
 export const BoardSliceSchema = Schema.Struct({
   cards: Schema.Array(KanbanCardSchema),
@@ -62,18 +80,15 @@ export const WorkspaceSliceSchema = Schema.Struct({
   searchQuery: Schema.String,
   priorityFilter: PriorityFilter,
   density: CardDensity,
-  composer: ComposerStateSchema,
-  editor: EditorStateSchema
+  mode: WorkspaceModeSchema
 })
 export type WorkspaceSlice = typeof WorkspaceSliceSchema.Type
 
 export const ShellSliceSchema = Schema.Struct({
   viewport: ViewportMetricsSchema,
   lifecycle: LifecycleState,
-  isBackgrounded: Schema.Boolean,
   backgroundTrips: Schema.Number,
-  notice: Schema.String,
-  statusAnnouncement: Schema.String,
+  notice: NoticeStateSchema,
   inspectorOpen: Schema.Boolean,
   traceEntries: Schema.Array(Schema.String),
   dispatchCount: Schema.Number
@@ -110,16 +125,13 @@ export const initialState = (params: InitialStateParams): KanbanState => {
       searchQuery: "",
       priorityFilter: "all",
       density: "comfortable",
-      composer: { _tag: "Closed" },
-      editor: { _tag: "Closed" }
+      mode: { _tag: "Idle" }
     },
     shell: {
       viewport: params.initialViewport,
       lifecycle: "active",
-      isBackgrounded: false,
       backgroundTrips: 0,
-      notice: "",
-      statusAnnouncement: "",
+      notice: { _tag: "Hidden" },
       inspectorOpen: false,
       traceEntries: [],
       dispatchCount: 0

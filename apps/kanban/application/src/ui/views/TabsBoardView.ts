@@ -34,7 +34,12 @@ export const tabsBoardView = (
   const activeLaneMeta = activeLane.lane
   const visibleCards = activeLane.visibleCards
   const overWip = activeLane.stats.overWip
-  const { canUndo, canRedo } = screen
+  const { canUndo, canRedo, workspaceMode } = screen
+  const quickTitle =
+    workspaceMode._tag === "Composing" || workspaceMode._tag === "SubmittingCard"
+      ? workspaceMode.title
+      : ""
+  const isSubmittingQuickCard = workspaceMode._tag === "SubmittingCard"
 
   return h.box
     .style({ flex: 1, flexDirection: "column" })
@@ -273,7 +278,7 @@ export const tabsBoardView = (
           h.input
             .testId("quick.input")
             .ariaLabel(`New card in ${activeLaneMeta.title}`)
-            .value(screen.quickTitle)
+            .value(quickTitle)
             .placeholder(`Quick add to ${activeLaneMeta.title}...`)
             .autoCorrect(true)
             .autoCapitalize("sentences")
@@ -293,6 +298,7 @@ export const tabsBoardView = (
           h.button
             .testId("quick.submit")
             .ariaLabel("Add card")
+            .disabled(isSubmittingQuickCard)
             .on("press", Msg.SubmittedQuickCard())
             .style({
               paddingHorizontal: 14,
@@ -304,7 +310,7 @@ export const tabsBoardView = (
             .children(
               h.text
                 .style({ fontSize: 13, fontWeight: "700", color: p.accentInk })
-                .children("+ Add")
+                .children(isSubmittingQuickCard ? "Adding..." : "+ Add")
             )
         ),
       // WIP warning
@@ -327,30 +333,36 @@ export const tabsBoardView = (
               )
           ),
       // Notice banner
-      screen.notice.length > 0 &&
-        h.button
-          .testId("board.notice")
-          .ariaLabel(screen.statusAnnouncement || screen.notice)
-          .on("press", Msg.DismissedNotice())
-          .style({
-            marginHorizontal: 16,
-            marginBottom: 8,
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            borderRadius: 6,
-            backgroundColor: p.pineSoft,
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center"
-          })
-          .children(
-            h.text
-              .style({ fontSize: 12, fontWeight: "600", color: p.pine })
-              .children(screen.notice),
-            h.text
-              .style({ fontSize: 11, fontWeight: "700", color: p.pine })
-              .children("OK")
-          ),
+      screen.notice._tag === "Visible" &&
+        (() => {
+          const isError = screen.notice.tone === "error"
+          const bg = isError ? p.accentSoft : p.pineSoft
+          const fg = isError ? p.accent : p.pine
+          return h.button
+            .testId("board.notice")
+            .role(isError ? "alert" : "status")
+            .ariaLabel(screen.notice.announcement)
+            .on("press", Msg.DismissedNotice())
+            .style({
+              marginHorizontal: 16,
+              marginBottom: 8,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 6,
+              backgroundColor: bg,
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center"
+            })
+            .children(
+              h.text
+                .style({ fontSize: 12, fontWeight: "600", color: fg })
+                .children(screen.notice.message),
+              h.text
+                .style({ fontSize: 11, fontWeight: "700", color: fg })
+                .children("OK")
+            )
+        })(),
       // Active lane scroll view
       h.scroll
         .testId("board.scroll")

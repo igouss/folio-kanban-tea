@@ -18,7 +18,14 @@ export const laneColumn = (
 ) => {
   const { lane, stats, visibleCards, wipText, laneAttrs } = entry
   const overWip = stats.overWip
-  const isAdding = screen.composingLane === lane.id
+  const { workspaceMode } = screen
+  const composerMode =
+    (workspaceMode._tag === "Composing" ||
+      workspaceMode._tag === "SubmittingCard") &&
+    workspaceMode.lane === lane.id
+      ? workspaceMode
+      : undefined
+  const isSubmitting = composerMode?._tag === "SubmittingCard"
 
   return h.box
     .key(lane.id)
@@ -96,7 +103,7 @@ export const laneColumn = (
             )
         ),
       // Inline quick-add composer
-      isAdding &&
+      composerMode !== undefined &&
         h.box
           .testId("quick.composer")
           .style({
@@ -111,7 +118,7 @@ export const laneColumn = (
             h.input
               .testId("quick.input")
               .ariaLabel(`New card title in ${lane.title}`)
-              .value(screen.quickTitle)
+              .value(composerMode.title)
               .placeholder(`New card in ${lane.title}...`)
               .autoFocus(true)
               .style({
@@ -148,6 +155,7 @@ export const laneColumn = (
                   ),
                 h.button
                   .testId("quick.submit")
+                  .disabled(isSubmitting)
                   .style({
                     paddingVertical: 6,
                     paddingHorizontal: 12,
@@ -161,7 +169,7 @@ export const laneColumn = (
                   .children(
                     h.text
                       .style({ fontSize: 11.5, fontWeight: "700", color: p.accentInk })
-                      .children("Add card")
+                      .children(isSubmitting ? "Adding..." : "Add card")
                   )
               )
           ),

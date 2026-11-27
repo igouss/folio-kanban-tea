@@ -21,10 +21,26 @@ import type {
   ReduceContext,
   ReduceResult
 } from "./actions.ts"
-import type { KanbanState, ShellSlice } from "./state.ts"
+import type { KanbanState, NoticeState, ShellSlice, WorkspaceMode } from "./state.ts"
 
 const MAX_TRACE_ENTRIES = 16
 const NO_EFFECTS: ReadonlyArray<AppEffect> = []
+const IDLE_MODE: WorkspaceMode = { _tag: "Idle" }
+const HIDDEN_NOTICE: NoticeState = { _tag: "Hidden" }
+
+const infoNotice = (message: string, announcement = message): NoticeState => ({
+  _tag: "Visible",
+  tone: "info",
+  message,
+  announcement
+})
+
+const errorNotice = (message: string, announcement = message): NoticeState => ({
+  _tag: "Visible",
+  tone: "error",
+  message,
+  announcement
+})
 
 const appendTrace = (
   entries: ReadonlyArray<string>,
@@ -38,7 +54,7 @@ const appendTrace = (
 const withTrace = (
   shell: ShellSlice,
   label: string,
-  patch?: Partial<Pick<ShellSlice, "notice" | "statusAnnouncement" | "inspectorOpen">>
+  patch?: Partial<Pick<ShellSlice, "notice" | "inspectorOpen">>
 ): ShellSlice => {
   const dispatchCount = shell.dispatchCount + 1
   return {
@@ -53,7 +69,7 @@ const mapEditorDraft = (
   state: KanbanState,
   update: (draft: CardDraft) => CardDraft
 ): ReduceResult => {
-  if (state.workspace.editor._tag !== "Open") {
+  if (state.workspace.mode._tag !== "EditingCard") {
     return { state, effects: NO_EFFECTS }
   }
   return {
@@ -61,7 +77,7 @@ const mapEditorDraft = (
       ...state,
       workspace: {
         ...state.workspace,
-        editor: { _tag: "Open", draft: update(state.workspace.editor.draft) }
+        mode: { _tag: "EditingCard", draft: update(state.workspace.mode.draft) }
       }
     },
     effects: NO_EFFECTS
@@ -74,18 +90,26 @@ export const reduce = (
   ctx: ReduceContext
 ): ReduceResult => {
   switch (action._tag) {
-    case "SelectedLane":
+    case "SelectedLane": {
+      const nextMode: WorkspaceMode =
+        state.workspace.mode._tag === "Composing"
+          ? { ...state.workspace.mode, lane: action.lane }
+          : state.workspace.mode
       return {
         state: {
           ...state,
-          workspace: { ...state.workspace, activeLane: action.lane },
+          workspace: {
+            ...state.workspace,
+            activeLane: action.lane,
+            mode: nextMode
+          },
           shell: withTrace(state.shell, `SelectedLane(${action.lane})`, {
-            notice: "",
-            statusAnnouncement: ""
+            notice: HIDDEN_NOTICE
           })
         },
         effects: NO_EFFECTS
       }
+    }
 
     case "TypedSearchQuery":
       return {
@@ -128,8 +152,7 @@ export const reduce = (
           ...state,
           board: { ...state.board, theme: nextTheme },
           shell: withTrace(state.shell, `ClickedToggleTheme(${nextTheme})`, {
-            notice: message,
-            statusAnnouncement: message
+            notice: infoNotice(message)
           })
         },
         effects: [
@@ -159,14 +182,12 @@ export const reduce = (
     case "ClickedUndo": {
       const result = undoHistory(state.board.history, state.board.cards)
       if (result === undefined) return { state, effects: NO_EFFECTS }
-      const message = "Undid last change."
       return {
         state: {
           ...state,
           board: { ...state.board, cards: result.cards, history: result.history },
           shell: withTrace(state.shell, "ClickedUndo", {
-            notice: message,
-            statusAnnouncement: message
+            notice: infoNotice("Undid last change.")
           })
         },
         effects: [
@@ -181,14 +202,12 @@ export const reduce = (
     case "ClickedRedo": {
       const result = redoHistory(state.board.history, state.board.cards)
       if (result === undefined) return { state, effects: NO_EFFECTS }
-      const message = "Redid change."
       return {
         state: {
           ...state,
           board: { ...state.board, cards: result.cards, history: result.history },
           shell: withTrace(state.shell, "ClickedRedo", {
-            notice: message,
-            statusAnnouncement: message
+            notice: infoNotice("Redid change.")
           })
         },
         effects: [
@@ -200,32 +219,38 @@ export const reduce = (
       }
     }
 
-    case "ClickedStartAddCard":
+    case "ClickedStartAddCard": {
+      if (state.workspace.mode._tag === "SubmittingCard") {
+        return { state, effects: NO_EFFECTS }
+      }
       return {
         state: {
           ...state,
           workspace: {
             ...state.workspace,
-            composer: { _tag: "Open", lane: action.lane, title: "" }
+            mode: { _tag: "Composing", lane: action.lane, title: "" }
           },
           shell: withTrace(state.shell, `ClickedStartAddCard(${action.lane})`, {
-            notice: ""
+            notice: HIDDEN_NOTICE
           })
         },
         effects: NO_EFFECTS
       }
+    }
 
     case "TypedQuickTitle": {
+      const { mode } = state.workspace
+      if (mode._tag === "SubmittingCard" || mode._tag === "EditingCard") {
+        return { state, effects: NO_EFFECTS }
+      }
       const lane =
-        state.workspace.composer._tag === "Open"
-          ? state.workspace.composer.lane
-          : state.workspace.activeLane
+        mode._tag === "Composing" ? mode.lane : state.workspace.activeLane
       return {
         state: {
           ...state,
           workspace: {
             ...state.workspace,
-            composer: { _tag: "Open", lane, title: action.text }
+            mode: { _tag: "Composing", lane, title: action.text }
           }
         },
         effects: NO_EFFECTS
@@ -233,29 +258,40 @@ export const reduce = (
     }
 
     case "SubmittedQuickCard": {
+      const { mode } = state.workspace
+      if (mode._tag === "SubmittingCard" || mode._tag === "EditingCard") {
+        return { state, effects: NO_EFFECTS }
+      }
       const targetLane =
-        state.workspace.composer._tag === "Open"
-          ? state.workspace.composer.lane
-          : state.workspace.activeLane
-      const rawTitle =
-        state.workspace.composer._tag === "Open"
-          ? state.workspace.composer.title
-          : ""
+        mode._tag === "Composing" ? mode.lane : state.workspace.activeLane
+      const rawTitle = mode._tag === "Composing" ? mode.title : ""
       const check = validateCardTitle(rawTitle, 2)
       if (!check.ok) {
         return {
           state: {
             ...state,
             shell: withTrace(state.shell, "SubmittedQuickCard(invalid)", {
-              notice: check.error,
-              statusAnnouncement: check.error
+              notice: errorNotice(check.error)
             })
           },
           effects: NO_EFFECTS
         }
       }
       return {
-        state,
+        state: {
+          ...state,
+          workspace: {
+            ...state.workspace,
+            mode: {
+              _tag: "SubmittingCard",
+              lane: targetLane,
+              title: check.title
+            }
+          },
+          shell: withTrace(state.shell, `SubmittedQuickCard(${targetLane})`, {
+            notice: HIDDEN_NOTICE
+          })
+        },
         effects: [
           {
             _tag: "MintCardMeta",
@@ -268,6 +304,9 @@ export const reduce = (
     }
 
     case "CompletedMintCard": {
+      if (state.workspace.mode._tag !== "SubmittingCard") {
+        return { state, effects: NO_EFFECTS }
+      }
       const result = applyQuickCreate(state.board, {
         title: action.title,
         lane: action.lane,
@@ -279,9 +318,16 @@ export const reduce = (
         return {
           state: {
             ...state,
+            workspace: {
+              ...state.workspace,
+              mode: {
+                _tag: "Composing",
+                lane: action.lane,
+                title: action.title
+              }
+            },
             shell: withTrace(state.shell, "CompletedMintCard(invalid)", {
-              notice: result.error,
-              statusAnnouncement: result.error
+              notice: errorNotice(result.error)
             })
           },
           effects: NO_EFFECTS
@@ -292,11 +338,11 @@ export const reduce = (
         state: {
           ...state,
           board: { ...state.board, cards: result.cards, history: result.history },
-          workspace: { ...state.workspace, composer: { _tag: "Closed" } },
+          workspace: { ...state.workspace, mode: IDLE_MODE },
           shell: withTrace(
             state.shell,
             `CompletedMintCard(${result.card.code} -> ${action.lane})`,
-            { notice: message, statusAnnouncement: message }
+            { notice: infoNotice(message) }
           )
         },
         effects: [
@@ -308,15 +354,24 @@ export const reduce = (
       }
     }
 
-    case "CancelledQuickCard":
+    case "CancelledQuickCard": {
+      if (
+        state.workspace.mode._tag !== "Composing" &&
+        state.workspace.mode._tag !== "SubmittingCard"
+      ) {
+        return { state, effects: NO_EFFECTS }
+      }
       return {
         state: {
           ...state,
-          workspace: { ...state.workspace, composer: { _tag: "Closed" } },
-          shell: withTrace(state.shell, "CancelledQuickCard")
+          workspace: { ...state.workspace, mode: IDLE_MODE },
+          shell: withTrace(state.shell, "CancelledQuickCard", {
+            notice: HIDDEN_NOTICE
+          })
         },
         effects: NO_EFFECTS
       }
+    }
 
     case "ClickedMoveCard": {
       const result = applyMoveCard(state.board, action.cardId, action.toLane)
@@ -337,8 +392,10 @@ export const reduce = (
             state.shell,
             `ClickedMoveCard(${result.card.code} -> ${action.toLane})`,
             {
-              notice: `Moved ${result.card.code} to ${result.laneName}.`,
-              statusAnnouncement: announcement
+              notice: infoNotice(
+                `Moved ${result.card.code} to ${result.laneName}.`,
+                announcement
+              )
             }
           )
         },
@@ -355,15 +412,17 @@ export const reduce = (
     case "ClickedDeleteCard": {
       const result = applyDeleteCard(state.board, action.cardId)
       if (result === undefined) return { state, effects: NO_EFFECTS }
-      const message = `Deleted ${result.card.code}.`
+      const nextMode: WorkspaceMode =
+        state.workspace.mode._tag === "EditingCard"
+          ? IDLE_MODE
+          : state.workspace.mode
       return {
         state: {
           ...state,
           board: { ...state.board, cards: result.cards, history: result.history },
-          workspace: { ...state.workspace, editor: { _tag: "Closed" } },
+          workspace: { ...state.workspace, mode: nextMode },
           shell: withTrace(state.shell, `ClickedDeleteCard(${result.card.code})`, {
-            notice: message,
-            statusAnnouncement: message
+            notice: infoNotice(`Deleted ${result.card.code}.`)
           })
         },
         effects: [
@@ -376,6 +435,9 @@ export const reduce = (
     }
 
     case "ClickedOpenEditor": {
+      if (state.workspace.mode._tag === "SubmittingCard") {
+        return { state, effects: NO_EFFECTS }
+      }
       const card = findCard(state.board.cards, action.cardId)
       if (card === undefined) return { state, effects: NO_EFFECTS }
       return {
@@ -383,11 +445,10 @@ export const reduce = (
           ...state,
           workspace: {
             ...state.workspace,
-            editor: { _tag: "Open", draft: cardToDraft(card) }
+            mode: { _tag: "EditingCard", draft: cardToDraft(card) }
           },
           shell: withTrace(state.shell, `ClickedOpenEditor(${card.code})`, {
-            notice: "",
-            statusAnnouncement: ""
+            notice: HIDDEN_NOTICE
           })
         },
         effects: NO_EFFECTS
@@ -416,24 +477,22 @@ export const reduce = (
       return mapEditorDraft(state, (d) => ({ ...d, points: action.points }))
 
     case "SubmittedEditCard": {
-      if (state.workspace.editor._tag !== "Open") {
+      if (state.workspace.mode._tag !== "EditingCard") {
         return { state, effects: NO_EFFECTS }
       }
-      const draft = state.workspace.editor.draft
+      const draft = state.workspace.mode.draft
       const result = applySaveDraft(state.board, draft)
       if (!result.ok) {
         return {
           state: {
             ...state,
             shell: withTrace(state.shell, "SubmittedEditCard(invalid)", {
-              notice: result.error,
-              statusAnnouncement: result.error
+              notice: errorNotice(result.error)
             })
           },
           effects: NO_EFFECTS
         }
       }
-      const message = `Saved ${result.card.code}.`
       return {
         state: {
           ...state,
@@ -441,11 +500,10 @@ export const reduce = (
           workspace: {
             ...state.workspace,
             activeLane: draft.lane,
-            editor: { _tag: "Closed" }
+            mode: IDLE_MODE
           },
           shell: withTrace(state.shell, `SubmittedEditCard(${result.card.code})`, {
-            notice: message,
-            statusAnnouncement: message
+            notice: infoNotice(`Saved ${result.card.code}.`)
           })
         },
         effects: [
@@ -457,19 +515,24 @@ export const reduce = (
       }
     }
 
-    case "CancelledEditCard":
+    case "CancelledEditCard": {
+      if (state.workspace.mode._tag !== "EditingCard") {
+        return { state, effects: NO_EFFECTS }
+      }
       return {
         state: {
           ...state,
-          workspace: { ...state.workspace, editor: { _tag: "Closed" } },
-          shell: withTrace(state.shell, "CancelledEditCard", { notice: "" })
+          workspace: { ...state.workspace, mode: IDLE_MODE },
+          shell: withTrace(state.shell, "CancelledEditCard", {
+            notice: HIDDEN_NOTICE
+          })
         },
         effects: NO_EFFECTS
       }
+    }
 
     case "ClickedResetDemo": {
       const result = applyResetBoard(state.board)
-      const message = "Reset board to default cards."
       return {
         state: {
           ...state,
@@ -479,12 +542,10 @@ export const reduce = (
             activeLane: "in_progress",
             searchQuery: "",
             priorityFilter: "all",
-            composer: { _tag: "Closed" },
-            editor: { _tag: "Closed" }
+            mode: IDLE_MODE
           },
           shell: withTrace(state.shell, "ClickedResetDemo", {
-            notice: message,
-            statusAnnouncement: message
+            notice: infoNotice("Reset board to default cards.")
           })
         },
         effects: [
@@ -496,25 +557,28 @@ export const reduce = (
       }
     }
 
-    case "DismissedNotice":
+    case "DismissedNotice": {
+      if (state.shell.notice._tag === "Hidden") {
+        return { state, effects: NO_EFFECTS }
+      }
       return {
         state: {
           ...state,
-          shell: { ...state.shell, notice: "", statusAnnouncement: "" }
+          shell: { ...state.shell, notice: HIDDEN_NOTICE }
         },
         effects: NO_EFFECTS
       }
+    }
 
     case "ChangedLifecycle": {
       const enteredBackground =
-        action.state === "background" && !state.shell.isBackgrounded
+        state.shell.lifecycle !== "background" && action.state === "background"
       return {
         state: {
           ...state,
           shell: {
             ...state.shell,
             lifecycle: action.state,
-            isBackgrounded: action.state === "background",
             backgroundTrips: enteredBackground
               ? state.shell.backgroundTrips + 1
               : state.shell.backgroundTrips

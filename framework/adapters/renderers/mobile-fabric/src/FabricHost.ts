@@ -1,13 +1,25 @@
 import { Renderer } from "@effect/ui"
 import type { Component, View } from "@effect/ui"
 import { Ui } from "@universal-ui/core"
-import { claimHost, type Engine, type EngineNode, type ResponderEvent } from "@ng-native/fabric"
+import { claimHost, type Engine, type EngineNode } from "@ng-native/fabric"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import type * as Layer from "effect/Layer"
 import * as Scope from "effect/Scope"
 import * as Fabric from "./Fabric.ts"
+import {
+  createActiveTextField,
+  initialPressGesture,
+  pressGrant,
+  pressMove,
+  pressRelease,
+  pressTerminate,
+  touchPoint,
+  type PressGestureState,
+  type Size,
+  type TextFieldLifecycle
+} from "./fsm.ts"
 import {
   IGNORED_UNIVERSAL_PROPS,
   mapFabricTag,
@@ -16,28 +28,6 @@ import {
 
 const CONTROLLED_PROPS: ReadonlySet<string> = new Set(["value"])
 const KEEP_SELECTION = -1
-const PRESS_RETENTION = { top: 20, left: 20, right: 20, bottom: 30 } as const
-const PRESS_CANCEL_DISTANCE = 15
-
-type Point = Readonly<{ x: number; y: number }>
-type Size = Readonly<{ width: number; height: number }>
-
-const touchPoint = (event: ResponderEvent): Point => {
-  const native = (event.nativeEvent ?? {}) as {
-    pageX?: number
-    pageY?: number
-    touches?: ReadonlyArray<{ pageX?: number; pageY?: number }>
-  }
-  const touch = native.touches?.[0]
-  return { x: native.pageX ?? touch?.pageX ?? 0, y: native.pageY ?? touch?.pageY ?? 0 }
-}
-
-const isStillOnControl = (size: Size | undefined, dx: number, dy: number): boolean => {
-  if (size === undefined) return Math.hypot(dx, dy) <= PRESS_CANCEL_DISTANCE
-  const horizontal = dx < 0 ? PRESS_RETENTION.left : PRESS_RETENTION.right
-  const vertical = dy < 0 ? PRESS_RETENTION.top : PRESS_RETENTION.bottom
-  return Math.abs(dx) <= size.width + horizontal && Math.abs(dy) <= size.height + vertical
-}
 
 const topLevelTypeOf = (name: string): string =>
   /^top[A-Z]/.test(name) ? name : `top${name.charAt(0).toUpperCase()}${name.slice(1)}`
@@ -59,13 +49,9 @@ interface PressState {
 }
 
 interface TextFieldState {
-  desiredValue: string | undefined
-  lastNativeText: string | undefined
-  eventCount: number
-  writtenEventCount: number | undefined
+  lifecycle: TextFieldLifecycle
   handler: View.Handler<unknown, any> | undefined
   dispatch: Renderer.Dispatch | undefined
-  isActive: boolean
   dispose: () => void
 }
 
@@ -136,11 +122,12 @@ export const makeHost = (
   }
 
   const reconcileTextField = (node: EngineNode, field: TextFieldState): void => {
-    const desired = field.desiredValue
-    if (!field.isActive || desired === undefined || field.lastNativeText === desired) return
-    field.lastNativeText = desired
+    if (field.lifecycle._tag !== "Active") return
+    const desired = field.lifecycle.desiredValue
+    if (desired === undefined || field.lifecycle.lastNativeText === desired) return
+    field.lifecycle.lastNativeText = desired
     engine.dispatchCommand(node, "setTextAndSelection", [
-      field.eventCount,
+      field.lifecycle.eventCount,
       desired,
       KEEP_SELECTION,
       KEEP_SELECTION
@@ -152,30 +139,25 @@ export const makeHost = (
     const existing = textFields.get(node)
     if (existing !== undefined) return existing
     const field: TextFieldState = {
-      desiredValue: undefined,
-      lastNativeText: undefined,
-      eventCount: 0,
-      writtenEventCount: undefined,
+      lifecycle: createActiveTextField(),
       handler: undefined,
       dispatch: undefined,
-      isActive: true,
       dispose: () => {}
     }
     const stop = engine.setEventListener(node, "topChange", (event) => {
+      if (field.lifecycle._tag !== "Active") return
       const native = (event as { nativeEvent?: { text?: string; eventCount?: number } })
         .nativeEvent
       const text = native?.text ?? ""
-      field.lastNativeText = text
-      field.eventCount = native?.eventCount ?? field.eventCount + 1
+      field.lifecycle.lastNativeText = text
+      field.lifecycle.eventCount = native?.eventCount ?? field.lifecycle.eventCount + 1
       if (field.handler !== undefined && field.dispatch !== undefined) {
         field.dispatch("changeText", field.handler, { text })
       }
-      scheduleFrame(() => {
-        if (field.isActive) reconcileTextField(node, field)
-      })
+      scheduleFrame(() => reconcileTextField(node, field))
     })
     field.dispose = () => {
-      field.isActive = false
+      field.lifecycle = { _tag: "Disposed" }
       stop()
     }
     textFields.set(node, field)
@@ -185,9 +167,8 @@ export const makeHost = (
   const ensurePressResponder = (node: EngineNode): PressState => {
     const existing = pressStates.get(node)
     if (existing !== undefined) return existing
-    let origin: Point | undefined
+    let gesture: PressGestureState = initialPressGesture
     let size: Size | undefined
-    let isCancelled = false
 
     const state: PressState = {
       isDisabled: disabledFlags.get(node) ?? false,
@@ -198,25 +179,25 @@ export const makeHost = (
     const stopResponding = engine.setResponder(node, {
       onStartShouldSetResponder: () => !state.isDisabled && state.handler !== undefined,
       onResponderGrant: (event) => {
-        origin = touchPoint(event)
-        isCancelled = false
+        gesture = pressGrant(touchPoint(event))
       },
       onResponderMove: (event) => {
-        if (isCancelled || origin === undefined) return
-        const pt = touchPoint(event)
-        isCancelled = !isStillOnControl(size, pt.x - origin.x, pt.y - origin.y)
+        gesture = pressMove(gesture, touchPoint(event), size)
       },
       onResponderRelease: () => {
-        const wasCancelled = isCancelled
-        origin = undefined
-        isCancelled = false
-        if (!wasCancelled && !state.isDisabled && state.handler !== undefined && state.dispatch !== undefined) {
+        const result = pressRelease(gesture)
+        gesture = result.next
+        if (
+          result.shouldEmitPress &&
+          !state.isDisabled &&
+          state.handler !== undefined &&
+          state.dispatch !== undefined
+        ) {
           state.dispatch("press", state.handler, {})
         }
       },
       onResponderTerminate: () => {
-        origin = undefined
-        isCancelled = true
+        gesture = pressTerminate()
       },
       onResponderTerminationRequest: () => true
     })
@@ -227,6 +208,7 @@ export const makeHost = (
       }
     })
     state.dispose = () => {
+      gesture = pressTerminate()
       stopResponding()
       stopLayout()
     }
@@ -322,16 +304,19 @@ export const makeHost = (
       }
       if (name === "value" && node.name === "text-input") {
         const field = ensureTextField(node)
+        if (field.lifecycle._tag !== "Active") return
         const desired = typeof value === "string" ? value : undefined
-        const changed = field.desiredValue !== desired
-        field.desiredValue = desired
-        if (field.lastNativeText === undefined) field.lastNativeText = desired
+        const changed = field.lifecycle.desiredValue !== desired
+        field.lifecycle.desiredValue = desired
+        if (field.lifecycle.lastNativeText === undefined) {
+          field.lifecycle.lastNativeText = desired
+        }
         if (changed) {
           engine.setProp(node, "text", desired ?? null)
         }
-        if (field.writtenEventCount !== field.eventCount) {
-          field.writtenEventCount = field.eventCount
-          engine.setProp(node, "mostRecentEventCount", field.eventCount)
+        if (field.lifecycle.writtenEventCount !== field.lifecycle.eventCount) {
+          field.lifecycle.writtenEventCount = field.lifecycle.eventCount
+          engine.setProp(node, "mostRecentEventCount", field.lifecycle.eventCount)
         }
         postCommitTasks.push(() => reconcileTextField(node, field))
         return
@@ -447,14 +432,19 @@ export const makeHost = (
                   : name === "scroll"
                     ? ((native["contentOffset"] as Record<string, unknown> | undefined) ?? { x: 0, y: 0 })
                     : name === "submit"
-                      ? {
-                          text:
-                            typeof native["text"] === "string"
-                              ? native["text"]
-                              : (textFields.get(node)?.lastNativeText ??
-                                textFields.get(node)?.desiredValue ??
-                                "")
-                        }
+                      ? (() => {
+                          const lc = textFields.get(node)?.lifecycle
+                          const fallback =
+                            lc?._tag === "Active"
+                              ? (lc.lastNativeText ?? lc.desiredValue ?? "")
+                              : ""
+                          return {
+                            text:
+                              typeof native["text"] === "string"
+                                ? native["text"]
+                                : fallback
+                          }
+                        })()
                       : native
               current.dispatch(name, handler, payload)
             })

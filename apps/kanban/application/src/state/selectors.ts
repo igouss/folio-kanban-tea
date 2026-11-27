@@ -1,14 +1,18 @@
 import {
   canRedoHistory,
   canUndoHistory,
-  type CardDraft,
   type KanbanCard,
   type LaneId,
   type PriorityFilter,
   type ThemeMode
 } from "@folio/kanban-domain"
 import type { LifecycleState, ViewportMetrics } from "@universal-ui/core"
-import type { CardDensity, KanbanState } from "./state.ts"
+import type {
+  CardDensity,
+  KanbanState,
+  NoticeState,
+  WorkspaceMode
+} from "./state.ts"
 
 export const COMPACT_BREAKPOINT_PX = 820
 
@@ -27,11 +31,8 @@ export interface BoardScreenSnapshot {
   readonly canRedo: boolean
   readonly undoDepth: number
   readonly redoDepth: number
-  readonly composingLane: LaneId | undefined
-  readonly quickTitle: string
-  readonly editorDraft: CardDraft | undefined
-  readonly notice: string
-  readonly statusAnnouncement: string
+  readonly workspaceMode: WorkspaceMode
+  readonly notice: NoticeState
   readonly lifecycleBadge: string
   readonly inspectorOpen: boolean
   readonly traceEntries: ReadonlyArray<string>
@@ -49,6 +50,9 @@ export const selectDensity = (state: KanbanState): CardDensity =>
 
 export const selectActiveLane = (state: KanbanState): LaneId =>
   state.workspace.activeLane
+
+export const selectWorkspaceMode = (state: KanbanState): WorkspaceMode =>
+  state.workspace.mode
 
 export const selectViewport = (state: KanbanState): ViewportMetrics =>
   state.shell.viewport
@@ -71,7 +75,7 @@ export const selectLifecycle = (state: KanbanState): LifecycleState =>
 export const selectBackgroundTrips = (state: KanbanState): number =>
   state.shell.backgroundTrips
 
-export const selectNotice = (state: KanbanState): string =>
+export const selectNotice = (state: KanbanState): NoticeState =>
   state.shell.notice
 
 export const selectDocumentTitle = (
@@ -98,14 +102,8 @@ export const selectBoardScreen = (state: KanbanState): BoardScreenSnapshot => {
     canRedo: canRedoHistory(board.history),
     undoDepth: board.history.past.length,
     redoDepth: board.history.future.length,
-    composingLane:
-      workspace.composer._tag === "Open" ? workspace.composer.lane : undefined,
-    quickTitle:
-      workspace.composer._tag === "Open" ? workspace.composer.title : "",
-    editorDraft:
-      workspace.editor._tag === "Open" ? workspace.editor.draft : undefined,
+    workspaceMode: workspace.mode,
     notice: shell.notice,
-    statusAnnouncement: shell.statusAnnouncement,
     lifecycleBadge:
       shell.backgroundTrips > 0
         ? `@effect/ui · ${shell.lifecycle} (${shell.backgroundTrips})`

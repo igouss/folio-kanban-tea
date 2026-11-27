@@ -21,8 +21,16 @@ import {
   toPayload
 } from "./events.ts"
 
+import {
+  completeInputNudge,
+  initialInputValueState,
+  readSubmittedInputValue,
+  receiveNativeInputValue,
+  syncDesiredInputValue,
+  type InputValueState
+} from "./fsm.ts"
+
 const CONTROLLED_PROPS: ReadonlySet<string> = new Set(["value"])
-const NUDGE = "\u200b"
 
 export interface GpuiNode extends Gpui.GpuiNodeHandle {
   readonly kind: "root" | "element" | "text"
@@ -40,8 +48,7 @@ export interface GpuiNode extends Gpui.GpuiNodeHandle {
   handlers: Readonly<Record<string, View.Handler<unknown, any>>>
   dispatch: Renderer.Dispatch | undefined
   nativeListeners: Set<string>
-  lastNativeValue: string | undefined
-  lastSentValue: string | undefined
+  inputValue: InputValueState
   isInteractive: boolean
   disabled: boolean
   horizontal: boolean
@@ -103,8 +110,7 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       handlers: {},
       dispatch: undefined,
       nativeListeners: new Set(),
-      lastNativeValue: undefined,
-      lastSentValue: undefined,
+      inputValue: initialInputValueState,
       isInteractive: tag === "button",
       disabled: false,
       horizontal: false,
@@ -148,26 +154,20 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
           return
         }
         if (eventType === "change") {
-          const clean =
-            node.lastSentValue?.endsWith(NUDGE) && rawEvent.value !== undefined
-              ? rawEvent.value.replace(NUDGE, "")
-              : rawEvent.value ?? ""
-          node.lastNativeValue = clean
+          const received = receiveNativeInputValue(node.inputValue, rawEvent.value)
+          node.inputValue = received.next
           const changeTextHandler = node.handlers["changeText"]
           if (changeTextHandler !== undefined) {
-            node.dispatch("changeText", changeTextHandler, { text: clean })
+            node.dispatch("changeText", changeTextHandler, { text: received.cleanValue })
           }
           const handler = node.handlers["change"]
           if (handler !== undefined) {
-            node.dispatch("change", handler, toPayload("change", rawEvent, clean))
+            node.dispatch("change", handler, toPayload("change", rawEvent, received.cleanValue))
           }
           return
         }
         if (eventType === "submit") {
-          const clean =
-            node.lastSentValue?.endsWith(NUDGE) && rawEvent.value !== undefined
-              ? rawEvent.value.replace(NUDGE, "")
-              : rawEvent.value ?? node.lastNativeValue ?? ""
+          const clean = readSubmittedInputValue(node.inputValue, rawEvent.value)
           const handler = node.handlers["submit"]
           if (handler !== undefined) {
             node.dispatch("submit", handler, {
@@ -191,22 +191,25 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
 
   const pushControlledValue = (node: GpuiNode, desired: string): void => {
     if (node.nativeType !== "input" && node.nativeType !== "textarea") return
-    if (node.lastNativeValue === desired && node.lastSentValue === desired) return
-    node.lastNativeValue = desired
-    if (node.lastSentValue !== desired) {
-      node.lastSentValue = desired
-      mutations.setCustomProp(node.id, "value", desired)
-      return
+    const { next, action } = syncDesiredInputValue(node.inputValue, desired)
+    node.inputValue = next
+    switch (action._tag) {
+      case "Noop":
+        return
+      case "Set":
+        mutations.setCustomProp(node.id, "value", action.value)
+        return
+      case "NudgeThenReset":
+        mutations.setCustomProp(node.id, "value", action.nudged)
+        pendingValueResets.push(() => {
+          const completed = completeInputNudge(node.inputValue, action.nudged)
+          node.inputValue = completed.next
+          if (completed.resetValue === undefined) return
+          mutations.setCustomProp(node.id, "value", completed.resetValue)
+          mutations.flushMutations()
+        })
+        return
     }
-    const nudged = desired + NUDGE
-    node.lastSentValue = nudged
-    mutations.setCustomProp(node.id, "value", nudged)
-    pendingValueResets.push(() => {
-      if (node.detached || node.lastSentValue !== nudged) return
-      node.lastSentValue = desired
-      mutations.setCustomProp(node.id, "value", desired)
-      mutations.flushMutations()
-    })
   }
 
   const computeAndSendStyle = (node: GpuiNode): void => {
@@ -277,6 +280,7 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
 
   const detachSubtree = (node: GpuiNode): void => {
     node.detached = true
+    node.inputValue = { _tag: "Detached" }
     unregisterEventHandlers(eventHandlers, node.id)
     node.nativeListeners.clear()
     dirtyStyleNodes.delete(node)
@@ -324,8 +328,7 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
         handlers: {},
         dispatch: undefined,
         nativeListeners: new Set(),
-        lastNativeValue: undefined,
-        lastSentValue: undefined,
+        inputValue: initialInputValueState,
         isInteractive: false,
         disabled: false,
         horizontal: false,

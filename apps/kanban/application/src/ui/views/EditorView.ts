@@ -1,6 +1,7 @@
 import type { CardDraft } from "@folio/kanban-domain"
 import type { Ui } from "@universal-ui/core"
 import { deriveCardEditorControls } from "../../presentation/index.ts"
+import type { NoticeState } from "../../state/index.ts"
 import type { FolioPalette as Palette } from "../theme.ts"
 import { FolioAppMessage as Msg, type FolioAppMessage } from "../FolioApp.ts"
 import { fieldLabel, secondaryButtonStyle, segmentedControl } from "./controls.ts"
@@ -8,7 +9,7 @@ import { fieldLabel, secondaryButtonStyle, segmentedControl } from "./controls.t
 export const editorView = (
   h: Ui.H<FolioAppMessage>,
   draft: CardDraft,
-  notice: string,
+  notice: NoticeState,
   p: Palette,
   mode: "modal" | "screen"
 ) => {
@@ -71,22 +72,30 @@ export const editorView = (
                 .children("Cancel")
             )
         ),
-      // Validation / error notice inside editor
-      notice.length > 0 &&
-        h.box
-          .testId("editor.notice")
-          .role("alert")
-          .style({
-            paddingVertical: 8,
-            paddingHorizontal: 10,
-            borderRadius: 6,
-            backgroundColor: p.accentSoft
-          })
-          .children(
-            h.text
-              .style({ fontSize: 12, fontWeight: "600", color: p.accent })
-              .children(notice)
-          ),
+      // Validation / info notice inside editor
+      notice._tag === "Visible" &&
+        (() => {
+          const isError = notice.tone === "error"
+          return h.box
+            .testId("editor.notice")
+            .role(isError ? "alert" : "status")
+            .ariaLabel(notice.announcement)
+            .style({
+              paddingVertical: 8,
+              paddingHorizontal: 10,
+              borderRadius: 6,
+              backgroundColor: isError ? p.accentSoft : p.pineSoft
+            })
+            .children(
+              h.text
+                .style({
+                  fontSize: 12,
+                  fontWeight: "600",
+                  color: isError ? p.accent : p.pine
+                })
+                .children(notice.message)
+            )
+        })(),
       // Title
       fieldLabel(h, "Title", p),
       h.input

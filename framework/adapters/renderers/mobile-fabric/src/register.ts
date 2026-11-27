@@ -26,12 +26,15 @@ export type RegisterAppOptions<RLayer = never> = Readonly<{
   layer?: Layer.Layer<RLayer> | undefined
 }>
 
-type RunningApp = Readonly<{
-  surfaceId: number
-  dispose: () => void
-}>
+type RegistrationState =
+  | { readonly _tag: "Stopped" }
+  | {
+      readonly _tag: "Running"
+      readonly surfaceId: number
+      readonly dispose: () => void
+    }
 
-type Registration = { running: RunningApp | undefined }
+type Registration = { state: RegistrationState }
 
 type Registry = {
   apps: Map<string, Registration>
@@ -47,9 +50,10 @@ const registry = (): Registry => {
 }
 
 const stop = (registration: Registration): void => {
-  const stopping = registration.running
-  registration.running = undefined
-  stopping?.dispose()
+  if (registration.state._tag !== "Running") return
+  const { dispose } = registration.state
+  registration.state = { _tag: "Stopped" }
+  dispose()
 }
 
 const installStopSurface = (apps: Registry): void => {
@@ -59,7 +63,10 @@ const installStopSurface = (apps: Registry): void => {
   const previousStopSurface = host.RN$stopSurface
   host.RN$stopSurface = (surfaceId) => {
     apps.apps.forEach((registration) => {
-      if (registration.running?.surfaceId === surfaceId) {
+      if (
+        registration.state._tag === "Running" &&
+        registration.state.surfaceId === surfaceId
+      ) {
         stop(registration)
       }
     })
@@ -91,7 +98,7 @@ export const registerApp = <
 
   const apps = registry()
   installStopSurface(apps)
-  const registration = apps.apps.get(appKey) ?? { running: undefined }
+  const registration = apps.apps.get(appKey) ?? { state: { _tag: "Stopped" } }
   apps.apps.set(appKey, registration)
 
   const start = (surfaceId: number): void => {
@@ -119,7 +126,8 @@ export const registerApp = <
       engine,
       { platform: Platform.OS, layer }
     )
-    registration.running = {
+    registration.state = {
+      _tag: "Running",
       surfaceId,
       dispose: () => {
         unwatch()
@@ -135,8 +143,7 @@ export const registerApp = <
     }
   )
 
-  const alreadyRunning = registration.running
-  if (alreadyRunning !== undefined) {
-    start(alreadyRunning.surfaceId)
+  if (registration.state._tag === "Running") {
+    start(registration.state.surfaceId)
   }
 }

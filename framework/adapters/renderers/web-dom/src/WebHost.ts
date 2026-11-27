@@ -5,6 +5,11 @@ import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
 import { Ui, type UiStyle } from "@universal-ui/core"
+import {
+  initialPointerState,
+  transitionPointer,
+  type PointerState
+} from "./fsm.ts"
 
 const CONTROLLED_PROPS: ReadonlySet<string> = new Set(["value"])
 
@@ -158,9 +163,7 @@ interface NodeMeta {
   baseStyle: UiStyle | undefined
   hoverStyle: UiStyle | undefined
   activeStyle: UiStyle | undefined
-  hovered: boolean
-  pressed: boolean
-  disabled: boolean
+  pointer: PointerState
   horizontal: boolean
   numberOfLines: number | undefined
   appliedCssKeys: Set<string>
@@ -194,18 +197,25 @@ export const makeHost = (doc: Document): WebHostHandle => {
   const trackedNodes = new Set<globalThis.Node>()
 
   const applyCss = (el: HTMLElement, meta: NodeMeta): void => {
-    const extra: UiStyle | undefined =
-      meta.pressed && meta.activeStyle !== undefined
-        ? meta.activeStyle
-        : meta.hovered && meta.hoverStyle !== undefined
-          ? meta.hoverStyle
-          : undefined
+    let extra: UiStyle | undefined
+    switch (meta.pointer._tag) {
+      case "Pressed":
+        extra = meta.activeStyle ?? meta.hoverStyle
+        break
+      case "Hovered":
+        extra = meta.hoverStyle
+        break
+      case "Idle":
+      case "Disabled":
+        extra = undefined
+        break
+    }
     const next = uiStyleToCss(meta.uiTag, meta.baseStyle, extra)
     if (meta.uiTag === "scroll" && meta.horizontal) {
       ;(next as Record<string, string>)["overflowX"] = "auto"
       ;(next as Record<string, string>)["overflowY"] = "hidden"
     }
-    if (meta.disabled) {
+    if (meta.pointer._tag === "Disabled") {
       ;(next as Record<string, string>)["cursor"] = "not-allowed"
     }
     if (meta.uiTag === "text" && meta.numberOfLines !== undefined) {
@@ -235,12 +245,11 @@ export const makeHost = (doc: Document): WebHostHandle => {
 
     if (needsHover && !meta.listeners.has("__hoverEnter")) {
       const onEnter: EventListener = () => {
-        meta.hovered = true
+        meta.pointer = transitionPointer(meta.pointer, "enter")
         applyCss(el, meta)
       }
       const onLeave: EventListener = () => {
-        meta.hovered = false
-        meta.pressed = false
+        meta.pointer = transitionPointer(meta.pointer, "leave")
         applyCss(el, meta)
       }
       el.addEventListener("mouseenter", onEnter)
@@ -251,11 +260,11 @@ export const makeHost = (doc: Document): WebHostHandle => {
 
     if (needsActive && !meta.listeners.has("__activeDown")) {
       const onDown: EventListener = () => {
-        meta.pressed = true
+        meta.pointer = transitionPointer(meta.pointer, "down")
         applyCss(el, meta)
       }
       const onUp: EventListener = () => {
-        meta.pressed = false
+        meta.pointer = transitionPointer(meta.pointer, "up")
         applyCss(el, meta)
       }
       el.addEventListener("mousedown", onDown)
@@ -304,9 +313,7 @@ export const makeHost = (doc: Document): WebHostHandle => {
         baseStyle: undefined,
         hoverStyle: undefined,
         activeStyle: undefined,
-        hovered: false,
-        pressed: false,
-        disabled: false,
+        pointer: initialPointerState,
         horizontal: false,
         numberOfLines: undefined,
         appliedCssKeys: new Set(),
@@ -382,7 +389,7 @@ export const makeHost = (doc: Document): WebHostHandle => {
       if (propName === "disabled") {
         const flag = Boolean(value)
         if (meta !== undefined) {
-          meta.disabled = flag
+          meta.pointer = transitionPointer(meta.pointer, flag ? "disable" : "enable")
           applyCss(el, meta)
         }
         if ("disabled" in el) {
@@ -467,7 +474,7 @@ export const makeHost = (doc: Document): WebHostHandle => {
       }
 
       ensureListener("click", handlers["press"] !== undefined, () => {
-        if (meta.disabled || meta.dispatch === undefined) return
+        if (meta.pointer._tag === "Disabled" || meta.dispatch === undefined) return
         const h = meta.handlers["press"]
         if (h !== undefined) meta.dispatch("press", h, {})
       })

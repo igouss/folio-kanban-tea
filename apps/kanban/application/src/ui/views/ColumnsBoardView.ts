@@ -319,35 +319,40 @@ export const columnsBoardView = (
             )
         ),
       // Notice banner
-      screen.notice.length > 0 &&
-        h.box
-          .testId("board.notice")
-          .role("status")
-          .ariaLabel(screen.statusAnnouncement || screen.notice)
-          .style({
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginTop: 10,
-            marginHorizontal: 20,
-            paddingVertical: 8,
-            paddingHorizontal: 12,
-            borderRadius: 6,
-            backgroundColor: p.pineSoft
-          })
-          .children(
-            h.text
-              .style({ fontSize: 12, fontWeight: "600", color: p.pine })
-              .children(screen.notice),
-            h.button
-              .testId("notice.dismiss")
-              .on("press", Msg.DismissedNotice())
-              .children(
-                h.text
-                  .style({ fontSize: 12, fontWeight: "700", color: p.pine })
-                  .children("Dismiss")
-              )
-          ),
+      screen.notice._tag === "Visible" &&
+        (() => {
+          const isError = screen.notice.tone === "error"
+          const bg = isError ? p.accentSoft : p.pineSoft
+          const fg = isError ? p.accent : p.pine
+          return h.box
+            .testId("board.notice")
+            .role(isError ? "alert" : "status")
+            .ariaLabel(screen.notice.announcement)
+            .style({
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginTop: 10,
+              marginHorizontal: 20,
+              paddingVertical: 8,
+              paddingHorizontal: 12,
+              borderRadius: 6,
+              backgroundColor: bg
+            })
+            .children(
+              h.text
+                .style({ fontSize: 12, fontWeight: "600", color: fg })
+                .children(screen.notice.message),
+              h.button
+                .testId("notice.dismiss")
+                .on("press", Msg.DismissedNotice())
+                .children(
+                  h.text
+                    .style({ fontSize: 12, fontWeight: "700", color: fg })
+                    .children("Dismiss")
+                )
+            )
+        })(),
       // Workspace body: 4 Kanban lanes + optional MVU Trace drawer
       h.box
         .style({

@@ -31,7 +31,8 @@ import {
   selectInspectorOpen,
   selectNotice,
   selectTheme,
-  selectViewport
+  selectViewport,
+  selectWorkspaceMode
 } from "../src/index.ts"
 
 const desktopTestProps = {
@@ -55,12 +56,20 @@ describe("@folio/kanban-app (Thin @effect/ui Shell over Pure Reducer)", () => {
           s.send(FolioAppMessage.ClickedStartAddCard({ lane: "backlog" }))
           s.send(FolioAppMessage.TypedQuickTitle({ text: "A" }))
           s.send(FolioAppMessage.SubmittedQuickCard())
-          assert.ok(selectNotice(s.model).includes("at least"))
+          const invalidNotice = selectNotice(s.model)
+          assert.equal(invalidNotice._tag, "Visible")
+          if (invalidNotice._tag === "Visible") {
+            assert.equal(invalidNotice.tone, "error")
+            assert.ok(invalidNotice.message.includes("at least"))
+          }
 
-          // Valid quick-add issues MintCardMeta, then SaveBoard
+          // Valid quick-add enters SubmittingCard, issues MintCardMeta, then SaveBoard
           s.send(FolioAppMessage.TypedQuickTitle({ text: "Unified cross-platform app" }))
-          s.send(FolioAppMessage.SubmittedQuickCard())
+          const pending = s
+            .send(FolioAppMessage.SubmittedQuickCard())
             .expectExact(MintCardMeta)
+          assert.equal(selectWorkspaceMode(s.model)._tag, "SubmittingCard")
+          pending
             .resolve(MintCardMeta, {
               id: "web-card-1",
               createdAt: "2026-11-27T00:00:00.000Z",
@@ -70,6 +79,7 @@ describe("@folio/kanban-app (Thin @effect/ui Shell over Pure Reducer)", () => {
             })
             .expectExact(SaveBoard)
             .resolve(SaveBoard, Component.noop)
+          assert.deepEqual(selectWorkspaceMode(s.model), { _tag: "Idle" })
 
           assert.equal(selectCards(s.model).length, 9)
           const created = cardsInLane(selectCards(s.model), "backlog").find(
