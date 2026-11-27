@@ -13,6 +13,7 @@ import {
 } from "#domain/Task"
 import { UiSchema } from "@effect/ui"
 import { Html } from "@effect/ui/html"
+import { highlightText } from "@folio/effect-ui-sdk"
 import { Schema } from "effect"
 import { AppRoute } from "../routes.ts"
 
@@ -21,7 +22,8 @@ export const CARD_DRAG_TYPE = "application/x-folio-card"
 export const KanbanCardProps = Schema.Struct({
   task: Task,
   compact: Schema.Boolean,
-  busy: Schema.Boolean
+  busy: Schema.Boolean,
+  searchQuery: Schema.optional(Schema.String)
 })
 export type KanbanCardProps = typeof KanbanCardProps.Type
 
@@ -71,11 +73,12 @@ export const KanbanCard = Html.component({
       $.emit(KanbanCardEvents.RequestedDelete({ id: $.props.task.id }))
   },
   view: (h) => {
-    const { busy, compact, task } = h.props
+    const { busy, compact, searchQuery, task } = h.props
     const { next, prev } = adjacentColumns(task.column)
     const detailHref = AppRoute.print(
       AppRoute.TaskDetail({ params: { id: task.id } })
     )
+    const titleSegments = highlightText(task.title, searchQuery ?? "")
 
     return h.article
       .class(
@@ -135,7 +138,15 @@ export const KanbanCard = Html.component({
         h.a
           .class("card-title-link")
           .attr("href", detailHref)
-          .children(task.title),
+          .children(
+            titleSegments.length === 1 && !titleSegments[0]?.match
+              ? task.title
+              : titleSegments.map((seg, idx) =>
+                  seg.match
+                    ? h.mark.key(String(idx)).class("search-hit").children(seg.text)
+                    : seg.text
+                )
+          ),
         !compact &&
           task.notes.length > 0 &&
           h.p.class("card-excerpt").children(task.notes),

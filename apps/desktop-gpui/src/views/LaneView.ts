@@ -1,4 +1,5 @@
 import type { Gpui } from "@folio/effect-ui-gpui"
+import { filterAndRankCards } from "@folio/effect-ui-sdk"
 import type { FolioPalette as Palette } from "@folio/kanban-core/theme"
 import { Option } from "effect"
 import type {
@@ -6,7 +7,7 @@ import type {
   KanbanDesktopModel
 } from "../components/KanbanDesktop.ts"
 import { KanbanDesktopMessage as Msg } from "../components/KanbanDesktop.ts"
-import { matchesFilter, type Column } from "../domain/board.ts"
+import type { Column } from "../domain/board.ts"
 import { cardView } from "./CardView.ts"
 
 const addCardSection = (
@@ -132,8 +133,10 @@ export const laneView = (
   columnIndex: number,
   p: Palette
 ) => {
-  const filteredCards = column.cards.filter((card) =>
-    matchesFilter(card, model.searchQuery, model.priorityFilter)
+  const filteredCards = filterAndRankCards(
+    column.cards,
+    model.searchQuery,
+    model.priorityFilter
   )
   const lanePoints = filteredCards.reduce((sum, c) => sum + c.points, 0)
   const overWip =

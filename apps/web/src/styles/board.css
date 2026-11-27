@@ -654,3 +654,10 @@
   font-size: 10px;
   font-weight: 600;
 }
+
+.search-hit {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 3px;
+  padding: 0 2px;
+}

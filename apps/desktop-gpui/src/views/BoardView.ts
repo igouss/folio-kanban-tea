@@ -1,4 +1,5 @@
 import type { Gpui } from "@folio/effect-ui-gpui"
+import { readProgress, readSegmentedControl } from "@folio/effect-ui-sdk"
 import { paletteFor } from "@folio/kanban-core/theme"
 import { Option } from "effect"
 import type {
@@ -31,7 +32,19 @@ export const boardView = (
     model.columns
       .find((col) => col.id === "done")
       ?.cards.reduce((sum, card) => sum + card.points, 0) ?? 0
-  const pct = totalPoints === 0 ? 0 : Math.round((donePoints / totalPoints) * 100)
+  const velocity = readProgress({
+    id: "desktop-board-velocity",
+    value: donePoints,
+    min: 0,
+    max: totalPoints,
+    ariaLabel: "Sprint velocity"
+  })
+  const priorityControl = readSegmentedControl({
+    id: "desktop-priority-filter",
+    value: model.priorityFilter,
+    ariaLabel: "Filter by priority",
+    items: PRIORITY_FILTERS
+  })
 
   return h.box
     .testId("board.root")
@@ -118,6 +131,46 @@ export const boardView = (
               gap: 8
             })
             .children(
+              model.canUndo &&
+                h.button
+                  .testId("board.undo")
+                  .ariaLabel("Undo last board change")
+                  .style({
+                    paddingTop: 6,
+                    paddingBottom: 6,
+                    paddingLeft: 10,
+                    paddingRight: 10,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: p.rule,
+                    backgroundColor: p.card,
+                    color: p.ink,
+                    fontSize: 12,
+                    fontWeight: 600
+                  })
+                  .hover({ backgroundColor: p.cardHover, borderColor: p.ruleStrong })
+                  .on("click", Msg.ClickedUndo())
+                  .children("Undo"),
+              model.canRedo &&
+                h.button
+                  .testId("board.redo")
+                  .ariaLabel("Redo board change")
+                  .style({
+                    paddingTop: 6,
+                    paddingBottom: 6,
+                    paddingLeft: 10,
+                    paddingRight: 10,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: p.rule,
+                    backgroundColor: p.card,
+                    color: p.ink,
+                    fontSize: 12,
+                    fontWeight: 600
+                  })
+                  .hover({ backgroundColor: p.cardHover, borderColor: p.ruleStrong })
+                  .on("click", Msg.ClickedRedo())
+                  .children("Redo"),
               h.button
                 .testId("theme.toggle")
                 .style({
@@ -222,6 +275,10 @@ export const boardView = (
                 })
                 .on("change", ({ value }) => Msg.TypedSearchQuery({ value })),
               h.box
+                .role(priorityControl.rootAttrs.role ?? "radiogroup")
+                .ariaLabel(
+                  priorityControl.rootAttrs["aria-label"] ?? "Filter by priority"
+                )
                 .style({
                   display: "flex",
                   flexDirection: "row",
@@ -233,19 +290,20 @@ export const boardView = (
                   borderColor: p.rule
                 })
                 .children(
-                  PRIORITY_FILTERS.map((opt) => {
-                    const active = model.priorityFilter === opt.value
-                    return h.button
+                  priorityControl.items.map((opt) =>
+                    h.button
                       .key(opt.value)
                       .testId(`filter.${opt.value}`)
+                      .role(opt.attrs.role ?? "radio")
+                      .ariaLabel(`${opt.label} priority`)
                       .style({
                         paddingTop: 5,
                         paddingBottom: 5,
                         paddingLeft: 10,
                         paddingRight: 10,
                         borderRadius: 5,
-                        backgroundColor: active ? p.cardHover : "transparent",
-                        color: active ? p.ink : p.inkSoft,
+                        backgroundColor: opt.checked ? p.cardHover : "transparent",
+                        color: opt.checked ? p.ink : p.inkSoft,
                         fontSize: 12,
                         fontWeight: 600
                       })
@@ -254,7 +312,7 @@ export const boardView = (
                         Msg.SelectedPriorityFilter({ priority: opt.value })
                       )
                       .children(opt.label)
-                  })
+                  )
                 )
             ),
           h.box
@@ -312,6 +370,8 @@ export const boardView = (
                     .children(`${donePoints}/${totalPoints}pt`)
                 ),
               h.box
+                .role(velocity.rootAttrs.role ?? "progressbar")
+                .ariaLabel(velocity.rootAttrs["aria-label"] ?? "Sprint velocity")
                 .style({
                   display: "flex",
                   flexDirection: "row",
@@ -329,7 +389,7 @@ export const boardView = (
                     })
                     .children(
                       h.box.style({
-                        width: `${pct}%`,
+                        width: `${velocity.percent}%`,
                         height: "100%",
                         borderRadius: 999,
                         backgroundColor: p.pine
@@ -337,7 +397,7 @@ export const boardView = (
                     ),
                   h.text
                     .style({ fontSize: 12, fontWeight: 700, color: p.ink })
-                    .children(`${pct}%`)
+                    .children(velocity.text)
                 )
             )
         ),
@@ -412,7 +472,7 @@ export const boardView = (
           h.text
             .style({ fontSize: 11.5, color: p.inkMuted })
             .children(
-              "Native @effect/ui Renderer.Host over Zed GPUI · Click any title to edit, < / > to move lanes"
+              "Native @effect/ui + @ui-sdk/core over Zed GPUI · Click any title to edit, < / > to move lanes"
             ),
           h.text
             .testId("board.dispatches")

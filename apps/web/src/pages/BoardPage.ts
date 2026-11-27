@@ -4,6 +4,13 @@ import { ColumnId, COLUMNS, columnTitle, type Task } from "#domain/Task"
 import { ListTasks } from "#queries/ListTasks"
 import { Command, Component, Head, Router } from "@effect/ui"
 import { Html, HtmlHead } from "@effect/ui/html"
+import {
+  applyHtmlAttrs,
+  filterAndRankCards,
+  nextSegmentedValue,
+  readProgress,
+  readSegmentedControl
+} from "@folio/effect-ui-sdk"
 import { Layer, Schema } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { AppRoute, type PriorityFilter } from "../routes.ts"
@@ -61,27 +68,13 @@ const priorityOptions: ReadonlyArray<{
   { value: "low", label: "Low" }
 ]
 
-const filterTasks = (
-  tasks: ReadonlyArray<Task>,
-  priority: PriorityFilter,
-  query: string
-): ReadonlyArray<Task> => {
-  const needle = query.trim().toLowerCase()
-  return tasks.filter((task) => {
-    if (priority !== "all" && task.priority !== priority) return false
-    if (needle.length === 0) return true
-    const haystack = [
-      task.key,
-      task.title,
-      task.notes,
-      task.assignee,
-      ...task.tags
-    ]
-      .join(" ")
-      .toLowerCase()
-    return haystack.includes(needle)
-  })
-}
+const densityOptions: ReadonlyArray<{
+  readonly value: "comfortable" | "compact"
+  readonly label: string
+}> = [
+  { value: "comfortable", label: "Detailed" },
+  { value: "compact", label: "Compact" }
+]
 
 export const BoardPageNoDeps = BoardPageDef.make({
   init: () => ({
@@ -209,18 +202,35 @@ export const BoardPageNoDeps = BoardPageDef.make({
     const compact = density === "compact"
 
     const renderBoard = (allTasks: ReadonlyArray<Task>, waiting: boolean) => {
-      const visibleTasks = filterTasks(allTasks, priority, queryText)
+      const visibleTasks = filterAndRankCards(allTasks, queryText, priority)
       const totalPoints = allTasks.reduce((sum, task) => sum + task.points, 0)
       const donePoints = allTasks
         .filter((task) => task.column === "done")
         .reduce((sum, task) => sum + task.points, 0)
-      const progressPct =
-        totalPoints === 0 ? 0 : Math.round((donePoints / totalPoints) * 100)
+      const velocity = readProgress({
+        id: "web-board-velocity",
+        value: donePoints,
+        min: 0,
+        max: totalPoints,
+        ariaLabel: "Sprint velocity"
+      })
+      const priorityControl = readSegmentedControl({
+        id: "web-priority-filter",
+        value: priority,
+        ariaLabel: "Filter by priority",
+        items: priorityOptions
+      })
+      const densityControl = readSegmentedControl({
+        id: "web-density-toggle",
+        value: density,
+        ariaLabel: "Card density",
+        items: densityOptions
+      })
 
       return h.div.class("board-shell").attr("aria-busy", String(waiting)).children(
         h.section.class("board-hero").children(
           h.div.class("board-hero-copy").children(
-            h.span.class("eyebrow-tag").children("SPRINT 26 · PURE ELM ARCHITECTURE"),
+            h.span.class("eyebrow-tag").children("SPRINT 26 · @EFFECT/UI + UI SDK"),
             h.h1.class("board-heading").children("Workflow Kanban"),
             h.p.class("board-lead").children(
               "Drag cards across lanes or use keyboard arrows. Every move is a typed Effect Command invalidating cached Queries."
@@ -235,15 +245,25 @@ export const BoardPageNoDeps = BoardPageDef.make({
               h.span.class("stat-label").children("Completed"),
               h.span.class("stat-value").children(`${donePoints}/${totalPoints}pt`)
             ),
-            h.div.class("stat-block progress-block").children(
+            applyHtmlAttrs(
+              h.div.class("stat-block progress-block"),
+              velocity.rootAttrs
+            ).children(
               h.div.class("progress-header").children(
                 h.span.class("stat-label").children("Velocity"),
-                h.span.class("stat-mono").children(`${progressPct}%`)
+                applyHtmlAttrs(
+                  h.span.class("stat-mono"),
+                  velocity.valueAttrs
+                ).children(velocity.text)
               ),
-              h.div.class("progress-track").children(
-                h.div
-                  .class("progress-fill")
-                  .style({ width: `${progressPct}%` })
+              applyHtmlAttrs(
+                h.div.class("progress-track"),
+                velocity.trackAttrs
+              ).children(
+                applyHtmlAttrs(
+                  h.div.class("progress-fill"),
+                  velocity.indicatorAttrs
+                ).style({ width: `${velocity.percent}%` })
               )
             )
           )
@@ -255,7 +275,7 @@ export const BoardPageNoDeps = BoardPageDef.make({
               .class("search-input")
               .attrs({
                 type: "search",
-                placeholder: "Filter by key, title, #tag, or assignee…",
+                placeholder: "Fuzzy filter by key, title, #tag, or assignee…",
                 "aria-label": "Search cards"
               })
               .value(queryText)
@@ -264,36 +284,63 @@ export const BoardPageNoDeps = BoardPageDef.make({
               )
           ),
           h.div.class("toolbar-group").children(
-            h.div.class("segmented-control").attr("role", "group").attr("aria-label", "Filter by priority").children(
-              priorityOptions.map((opt) =>
-                h.button
-                  .key(opt.value)
-                  .class("segment-btn", priority === opt.value && "is-active")
-                  .attr("type", "button")
+            applyHtmlAttrs(
+              h.div.class("segmented-control"),
+              priorityControl.rootAttrs
+            ).children(
+              priorityControl.items.map((opt) =>
+                applyHtmlAttrs(
+                  h.button
+                    .key(opt.value)
+                    .class("segment-btn", opt.checked && "is-active")
+                    .attr("type", "button"),
+                  opt.attrs
+                )
                   .on(
                     "click",
                     BoardPageMessage.SelectedPriority({ priority: opt.value })
                   )
+                  .on("keydown", ({ key }) => {
+                    const next = nextSegmentedValue(
+                      priorityControl.items,
+                      priority,
+                      key
+                    )
+                    return next !== undefined
+                      ? BoardPageMessage.SelectedPriority({ priority: next })
+                      : undefined
+                  })
                   .children(opt.label)
               )
             ),
-            h.div.class("segmented-control").attr("role", "group").attr("aria-label", "Card density").children(
-              h.button
-                .class("segment-btn", density === "comfortable" && "is-active")
-                .attr("type", "button")
-                .on(
-                  "click",
-                  BoardPageMessage.SelectedDensity({ density: "comfortable" })
+            applyHtmlAttrs(
+              h.div.class("segmented-control"),
+              densityControl.rootAttrs
+            ).children(
+              densityControl.items.map((opt) =>
+                applyHtmlAttrs(
+                  h.button
+                    .key(opt.value)
+                    .class("segment-btn", opt.checked && "is-active")
+                    .attr("type", "button"),
+                  opt.attrs
                 )
-                .children("Detailed"),
-              h.button
-                .class("segment-btn", density === "compact" && "is-active")
-                .attr("type", "button")
-                .on(
-                  "click",
-                  BoardPageMessage.SelectedDensity({ density: "compact" })
-                )
-                .children("Compact")
+                  .on(
+                    "click",
+                    BoardPageMessage.SelectedDensity({ density: opt.value })
+                  )
+                  .on("keydown", ({ key }) => {
+                    const next = nextSegmentedValue(
+                      densityControl.items,
+                      density,
+                      key
+                    )
+                    return next !== undefined
+                      ? BoardPageMessage.SelectedDensity({ density: next })
+                      : undefined
+                  })
+                  .children(opt.label)
+              )
             ),
             h.button
               .class("ghost-btn")
@@ -422,7 +469,8 @@ export const BoardPageNoDeps = BoardPageDef.make({
                           props: {
                             task,
                             compact,
-                            busy: model.busyCardId === task.id
+                            busy: model.busyCardId === task.id,
+                            searchQuery: queryText
                           },
                           onEmit: {
                             RequestedMove: ({ column, id }) =>

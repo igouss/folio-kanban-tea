@@ -1,5 +1,11 @@
 import type { Fabric } from "@folio/effect-ui-fabric"
-import { LANES, matchesCard, type PriorityFilter } from "@folio/kanban-core"
+import {
+  filterAndRankCards,
+  readProgress,
+  readSegmentedControl,
+  readTabs
+} from "@folio/effect-ui-sdk"
+import { LANES, type PriorityFilter } from "@folio/kanban-core"
 import { paletteFor, type FolioPalette as Palette } from "@folio/kanban-core/theme"
 import {
   KanbanMobileMessage as Msg,
@@ -26,8 +32,10 @@ const boardView = (
 ) => {
   const activeLaneMeta = LANES.find((l) => l.id === model.activeLane)!
   const laneAllCards = model.cards.filter((c) => c.lane === model.activeLane)
-  const visibleCards = laneAllCards.filter((c) =>
-    matchesCard(c, model.searchQuery, model.priorityFilter)
+  const visibleCards = filterAndRankCards(
+    laneAllCards,
+    model.searchQuery,
+    model.priorityFilter
   )
   const overWip =
     activeLaneMeta.wipLimit !== null &&
@@ -37,8 +45,25 @@ const boardView = (
   const donePoints = model.cards
     .filter((c) => c.lane === "done")
     .reduce((sum, c) => sum + c.points, 0)
-  const pct =
-    totalPoints === 0 ? 0 : Math.round((donePoints / totalPoints) * 100)
+  const velocity = readProgress({
+    id: "mobile-board-velocity",
+    value: donePoints,
+    min: 0,
+    max: totalPoints,
+    ariaLabel: "Sprint velocity"
+  })
+  const laneTabs = readTabs({
+    id: "mobile-lane-tabs",
+    value: model.activeLane,
+    ariaLabel: "Kanban lanes",
+    items: LANES.map((lane) => ({ value: lane.id, label: lane.shortTitle }))
+  })
+  const priorityControl = readSegmentedControl({
+    id: "mobile-priority-filter",
+    value: model.priorityFilter,
+    ariaLabel: "Filter by priority",
+    items: PRIORITY_FILTERS
+  })
 
   return h.view
     .style({ flex: 1 })
@@ -122,19 +147,71 @@ const boardView = (
                 .testID("board.velocity")
                 .style({ fontSize: 12, color: p.inkMuted })
                 .children(
-                  `${model.cards.length} cards · ${donePoints}/${totalPoints}pt done (${pct}%)`
+                  `${model.cards.length} cards · ${donePoints}/${totalPoints}pt done (${velocity.text})`
                 ),
-              h.pressable
-                .testID("board.reset")
-                .on("press", Msg.PressedResetDemo())
+              h.view
+                .style({ flexDirection: "row", alignItems: "center", gap: 12 })
                 .children(
-                  h.text
-                    .style({ fontSize: 12, fontWeight: "600", color: p.accent })
-                    .children("Reset")
+                  model.canUndo &&
+                    h.pressable
+                      .testID("board.undo")
+                      .accessibilityLabel("Undo last board change")
+                      .on("press", Msg.PressedUndo())
+                      .children(
+                        h.text
+                          .style({
+                            fontSize: 12,
+                            fontWeight: "600",
+                            color: p.ink
+                          })
+                          .children("Undo")
+                      ),
+                  model.canRedo &&
+                    h.pressable
+                      .testID("board.redo")
+                      .accessibilityLabel("Redo board change")
+                      .on("press", Msg.PressedRedo())
+                      .children(
+                        h.text
+                          .style({
+                            fontSize: 12,
+                            fontWeight: "600",
+                            color: p.ink
+                          })
+                          .children("Redo")
+                      ),
+                  h.pressable
+                    .testID("board.reset")
+                    .on("press", Msg.PressedResetDemo())
+                    .children(
+                      h.text
+                        .style({ fontSize: 12, fontWeight: "600", color: p.accent })
+                        .children("Reset")
+                    )
                 )
+            ),
+          h.view
+            .testID("board.progress")
+            .accessibilityLabel(
+              `${velocity.rootAttrs["aria-label"] ?? "Sprint velocity"} ${velocity.text}`
+            )
+            .style({
+              height: 5,
+              borderRadius: 999,
+              backgroundColor: p.surfaceAlt,
+              overflow: "hidden"
+            })
+            .children(
+              h.view.style({
+                width: `${velocity.percent}%`,
+                height: "100%",
+                borderRadius: 999,
+                backgroundColor: p.pine
+              })
             )
         ),
       h.view
+        .accessibilityLabel(laneTabs.listAttrs["aria-label"] ?? "Kanban lanes")
         .style({
           flexDirection: "row",
           paddingHorizontal: 14,
@@ -145,9 +222,10 @@ const boardView = (
           borderBottomColor: p.border
         })
         .children(
-          LANES.map((lane) => {
+          laneTabs.items.map((tab) => {
+            const lane = LANES.find((l) => l.id === tab.value)!
             const count = model.cards.filter((c) => c.lane === lane.id).length
-            const isActive = model.activeLane === lane.id
+            const isActive = tab.selected
             const laneOver = lane.wipLimit !== null && count > lane.wipLimit
             return h.pressable
               .key(lane.id)
@@ -175,7 +253,7 @@ const boardView = (
                     fontWeight: "700",
                     color: isActive ? p.surface : p.ink
                   })
-                  .children(lane.shortTitle),
+                  .children(tab.label),
                 h.text
                   .style({
                     fontSize: 11,
@@ -219,33 +297,36 @@ const boardView = (
               color: p.ink
             }),
           h.view
+            .accessibilityLabel(
+              priorityControl.rootAttrs["aria-label"] ?? "Filter by priority"
+            )
             .style({ flexDirection: "row", gap: 6 })
             .children(
-              PRIORITY_FILTERS.map((opt) => {
-                const active = model.priorityFilter === opt.value
-                return h.pressable
+              priorityControl.items.map((opt) =>
+                h.pressable
                   .key(opt.value)
                   .testID(`filter.${opt.value}`)
+                  .accessibilityLabel(`${opt.label} priority`)
                   .on("press", Msg.SelectedPriorityFilter({ priority: opt.value }))
                   .style({
                     flex: 1,
                     paddingVertical: 6,
                     borderRadius: 6,
                     alignItems: "center",
-                    backgroundColor: active ? p.accent : p.surface,
+                    backgroundColor: opt.checked ? p.accent : p.surface,
                     borderWidth: 1,
-                    borderColor: active ? p.accent : p.border
+                    borderColor: opt.checked ? p.accent : p.border
                   })
                   .children(
                     h.text
                       .style({
                         fontSize: 12,
                         fontWeight: "700",
-                        color: active ? p.accentInk : p.inkSoft
+                        color: opt.checked ? p.accentInk : p.inkSoft
                       })
                       .children(opt.label)
                   )
-              })
+              )
             )
         ),
       h.view

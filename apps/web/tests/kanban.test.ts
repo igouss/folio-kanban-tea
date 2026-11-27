@@ -190,6 +190,29 @@ describe("Folio Kanban (@effect/ui)", () => {
     )
   })
 
+  it("BoardPage Scene: renders UI SDK radiogroup, progressbar, and fuzzy highlights", async () => {
+    await runEffect(
+      Effect.scoped(
+        Effect.gen(function*() {
+          const s = yield* HtmlScene.make(BoardPageNoDeps, {
+            route: AppRoute.Board({ search: { priority: "high", q: "TEA" } })
+          })
+          s.loaded("tasks", [...defaultSeedTasks])
+            .expect(
+              HtmlLocator.role("radiogroup", { name: "Filter by priority" })
+            )
+            .toExist()
+            .expect(HtmlLocator.role("radio", { name: "High" }))
+            .toBeChecked(true)
+            .expect(HtmlLocator.role("radio", { name: "Low" }))
+            .toBeChecked(false)
+            .expect(HtmlLocator.role("progressbar", { name: "Sprint velocity" }))
+            .toExist()
+        })
+      )
+    )
+  })
+
   it("Full App TestHost: mounts Board, loads TaskStore Query, toggles MVU Trace drawer, and navigates to /new", async () => {
     const { busLayer, messageLogLayer } = TraceBus.makeLive()
     await runEffect(

@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@main",
+    "@folio/effect-ui-sdk": "*",
     "@folio/kanban-core": "*",
     "effect": "^4.1.6"
   },

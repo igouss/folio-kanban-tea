@@ -1,4 +1,5 @@
 import type { Fabric } from "@folio/effect-ui-fabric"
+import { readSegmentedControl } from "@folio/effect-ui-sdk"
 import { LANES, type Priority } from "@folio/kanban-core"
 import type { FolioPalette as Palette } from "@folio/kanban-core/theme"
 import {
@@ -23,8 +24,27 @@ export const detailView = (
   draft: EditDraft,
   statusBanner: string,
   p: Palette
-) =>
-  h.view
+) => {
+  const laneControl = readSegmentedControl({
+    id: "mobile-detail-lane",
+    value: draft.lane,
+    ariaLabel: "Lane",
+    items: LANES.map((lane) => ({ value: lane.id, label: lane.shortTitle }))
+  })
+  const priorityControl = readSegmentedControl({
+    id: "mobile-detail-priority",
+    value: draft.priority,
+    ariaLabel: "Priority",
+    items: PRIORITIES
+  })
+  const pointsControl = readSegmentedControl({
+    id: "mobile-detail-points",
+    value: String(draft.points),
+    ariaLabel: "Story points",
+    items: POINTS.map((pt) => ({ value: String(pt), label: `${pt}` }))
+  })
+
+  return h.view
     .key(`detail.${draft.cardId}`)
     .style({ flex: 1 })
     .children(
@@ -118,33 +138,33 @@ export const detailView = (
                     .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
                     .children("LANE"),
                   h.view
+                    .accessibilityLabel(laneControl.rootAttrs["aria-label"] ?? "Lane")
                     .style({ flexDirection: "row", gap: 6 })
                     .children(
-                      LANES.map((lane) => {
-                        const active = draft.lane === lane.id
-                        return h.pressable
-                          .key(lane.id)
-                          .testID(`detail.lane.${lane.id}`)
-                          .on("press", Msg.SelectedDraftLane({ lane: lane.id }))
+                      laneControl.items.map((opt) =>
+                        h.pressable
+                          .key(opt.value)
+                          .testID(`detail.lane.${opt.value}`)
+                          .on("press", Msg.SelectedDraftLane({ lane: opt.value }))
                           .style({
                             flex: 1,
                             paddingVertical: 8,
                             borderRadius: 7,
                             alignItems: "center",
-                            backgroundColor: active ? p.ink : p.surface,
+                            backgroundColor: opt.checked ? p.ink : p.surface,
                             borderWidth: 1,
-                            borderColor: active ? p.ink : p.border
+                            borderColor: opt.checked ? p.ink : p.border
                           })
                           .children(
                             h.text
                               .style({
                                 fontSize: 12,
                                 fontWeight: "700",
-                                color: active ? p.surface : p.ink
+                                color: opt.checked ? p.surface : p.ink
                               })
-                              .children(lane.shortTitle)
+                              .children(opt.label)
                           )
-                      })
+                      )
                     )
                 ),
               h.view
@@ -154,11 +174,13 @@ export const detailView = (
                     .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
                     .children("PRIORITY"),
                   h.view
+                    .accessibilityLabel(
+                      priorityControl.rootAttrs["aria-label"] ?? "Priority"
+                    )
                     .style({ flexDirection: "row", gap: 6 })
                     .children(
-                      PRIORITIES.map((opt) => {
-                        const active = draft.priority === opt.value
-                        return h.pressable
+                      priorityControl.items.map((opt) =>
+                        h.pressable
                           .key(opt.value)
                           .testID(`detail.priority.${opt.value}`)
                           .on("press", Msg.SelectedDraftPriority({ priority: opt.value }))
@@ -167,20 +189,20 @@ export const detailView = (
                             paddingVertical: 8,
                             borderRadius: 7,
                             alignItems: "center",
-                            backgroundColor: active ? p.accent : p.surface,
+                            backgroundColor: opt.checked ? p.accent : p.surface,
                             borderWidth: 1,
-                            borderColor: active ? p.accent : p.border
+                            borderColor: opt.checked ? p.accent : p.border
                           })
                           .children(
                             h.text
                               .style({
                                 fontSize: 12,
                                 fontWeight: "700",
-                                color: active ? p.accentInk : p.ink
+                                color: opt.checked ? p.accentInk : p.ink
                               })
                               .children(opt.label)
                           )
-                      })
+                      )
                     )
                 ),
               h.view
@@ -190,33 +212,38 @@ export const detailView = (
                     .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
                     .children("STORY POINTS"),
                   h.view
+                    .accessibilityLabel(
+                      pointsControl.rootAttrs["aria-label"] ?? "Story points"
+                    )
                     .style({ flexDirection: "row", gap: 6 })
                     .children(
-                      POINTS.map((pt) => {
-                        const active = draft.points === pt
-                        return h.pressable
-                          .key(String(pt))
-                          .testID(`detail.points.${pt}`)
-                          .on("press", Msg.SelectedDraftPoints({ points: pt }))
+                      pointsControl.items.map((opt) =>
+                        h.pressable
+                          .key(opt.value)
+                          .testID(`detail.points.${opt.value}`)
+                          .on(
+                            "press",
+                            Msg.SelectedDraftPoints({ points: Number(opt.value) })
+                          )
                           .style({
                             flex: 1,
                             paddingVertical: 8,
                             borderRadius: 7,
                             alignItems: "center",
-                            backgroundColor: active ? p.ink : p.surface,
+                            backgroundColor: opt.checked ? p.ink : p.surface,
                             borderWidth: 1,
-                            borderColor: active ? p.ink : p.border
+                            borderColor: opt.checked ? p.ink : p.border
                           })
                           .children(
                             h.text
                               .style({
                                 fontSize: 12,
                                 fontWeight: "700",
-                                color: active ? p.surface : p.ink
+                                color: opt.checked ? p.surface : p.ink
                               })
-                              .children(`${pt}`)
+                              .children(opt.label)
                           )
-                      })
+                      )
                     )
                 ),
               h.view
@@ -282,3 +309,4 @@ export const detailView = (
             )
         )
     )
+}

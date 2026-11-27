@@ -93,6 +93,23 @@ describe("Folio Kanban Desktop (@effect/ui + Zed GPUI Host)", () => {
           assert.equal(renderer.findByTestId("editor.modal"), undefined)
           const done = root.model()!.columns.find((c) => c.id === "done")!
           assert.equal(done.cards[0]?.title, "Refined GPUI native host")
+
+          // Undo & Redo via @ui-sdk/core createUndoStack
+          assert.equal(root.model()!.canUndo, true)
+          renderer.clickByTestId("board.undo")
+          yield* Effect.promise(tick)
+          assert.equal(
+            root.model()!.columns.find((c) => c.id === "done")!.cards[0]?.title ===
+              "Refined GPUI native host",
+            false
+          )
+          assert.equal(root.model()!.canRedo, true)
+          renderer.clickByTestId("board.redo")
+          yield* Effect.promise(tick)
+          assert.equal(
+            root.model()!.columns.find((c) => c.id === "done")!.cards[0]?.title,
+            "Refined GPUI native host"
+          )
         })
       ).pipe(Effect.provide(appLayer))
     )

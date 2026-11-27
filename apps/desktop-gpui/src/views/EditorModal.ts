@@ -1,4 +1,5 @@
 import type { Gpui } from "@folio/effect-ui-gpui"
+import { readSegmentedControl } from "@folio/effect-ui-sdk"
 import type { FolioPalette as Palette } from "@folio/kanban-core/theme"
 import type {
   KanbanDesktopMessage,
@@ -23,8 +24,27 @@ export const editorModal = (
   model: KanbanDesktopModel,
   draft: EditDraft,
   p: Palette
-) =>
-  h.box
+) => {
+  const laneControl = readSegmentedControl({
+    id: "desktop-editor-lane",
+    value: draft.columnId,
+    ariaLabel: "Lane",
+    items: model.columns.map((col) => ({ value: col.id, label: col.name }))
+  })
+  const priorityControl = readSegmentedControl({
+    id: "desktop-editor-priority",
+    value: draft.priority,
+    ariaLabel: "Priority",
+    items: PRIORITIES
+  })
+  const pointsControl = readSegmentedControl({
+    id: "desktop-editor-points",
+    value: String(draft.points),
+    ariaLabel: "Story points",
+    items: POINT_CHOICES.map((pt) => ({ value: String(pt), label: `${pt}pt` }))
+  })
+
+  return h.box
     .testId("editor.modal")
     .role("dialog")
     .ariaLabel(`Edit ${draft.code}`)
@@ -130,6 +150,8 @@ export const editorModal = (
                 .style({ fontSize: 11, fontWeight: 700, color: p.inkMuted })
                 .children("LANE"),
               h.box
+                .role(laneControl.rootAttrs.role ?? "radiogroup")
+                .ariaLabel(laneControl.rootAttrs["aria-label"] ?? "Lane")
                 .style({
                   display: "flex",
                   flexDirection: "row",
@@ -141,11 +163,11 @@ export const editorModal = (
                   borderColor: p.rule
                 })
                 .children(
-                  model.columns.map((col) => {
-                    const active = draft.columnId === col.id
-                    return h.button
-                      .key(col.id)
-                      .testId(`editor.lane.${col.id}`)
+                  laneControl.items.map((opt) =>
+                    h.button
+                      .key(opt.value)
+                      .testId(`editor.lane.${opt.value}`)
+                      .role(opt.attrs.role ?? "radio")
                       .style({
                         flexGrow: 1,
                         paddingTop: 5,
@@ -153,15 +175,15 @@ export const editorModal = (
                         paddingLeft: 8,
                         paddingRight: 8,
                         borderRadius: 5,
-                        backgroundColor: active ? p.cardHover : "transparent",
-                        color: active ? p.ink : p.inkSoft,
+                        backgroundColor: opt.checked ? p.cardHover : "transparent",
+                        color: opt.checked ? p.ink : p.inkSoft,
                         fontSize: 12,
                         fontWeight: 600,
                         textAlign: "center"
                       })
-                      .on("click", Msg.SelectedEditColumn({ columnId: col.id }))
-                      .children(col.name)
-                  })
+                      .on("click", Msg.SelectedEditColumn({ columnId: opt.value }))
+                      .children(opt.label)
+                  )
                 )
             ),
           h.box
@@ -179,6 +201,10 @@ export const editorModal = (
                     .style({ fontSize: 11, fontWeight: 700, color: p.inkMuted })
                     .children("PRIORITY"),
                   h.box
+                    .role(priorityControl.rootAttrs.role ?? "radiogroup")
+                    .ariaLabel(
+                      priorityControl.rootAttrs["aria-label"] ?? "Priority"
+                    )
                     .style({
                       display: "flex",
                       flexDirection: "row",
@@ -190,11 +216,11 @@ export const editorModal = (
                       borderColor: p.rule
                     })
                     .children(
-                      PRIORITIES.map((opt) => {
-                        const active = draft.priority === opt.value
-                        return h.button
+                      priorityControl.items.map((opt) =>
+                        h.button
                           .key(opt.value)
                           .testId(`editor.priority.${opt.value}`)
+                          .role(opt.attrs.role ?? "radio")
                           .style({
                             flexGrow: 1,
                             paddingTop: 5,
@@ -202,8 +228,8 @@ export const editorModal = (
                             paddingLeft: 8,
                             paddingRight: 8,
                             borderRadius: 5,
-                            backgroundColor: active ? p.cardHover : "transparent",
-                            color: active ? p.ink : p.inkSoft,
+                            backgroundColor: opt.checked ? p.cardHover : "transparent",
+                            color: opt.checked ? p.ink : p.inkSoft,
                             fontSize: 12,
                             fontWeight: 600,
                             textAlign: "center"
@@ -213,7 +239,7 @@ export const editorModal = (
                             Msg.SelectedEditPriority({ priority: opt.value })
                           )
                           .children(opt.label)
-                      })
+                      )
                     )
                 ),
               h.box
@@ -253,6 +279,10 @@ export const editorModal = (
                 .style({ fontSize: 11, fontWeight: 700, color: p.inkMuted })
                 .children("STORY POINTS"),
               h.box
+                .role(pointsControl.rootAttrs.role ?? "radiogroup")
+                .ariaLabel(
+                  pointsControl.rootAttrs["aria-label"] ?? "Story points"
+                )
                 .style({
                   display: "flex",
                   flexDirection: "row",
@@ -264,25 +294,28 @@ export const editorModal = (
                   borderColor: p.rule
                 })
                 .children(
-                  POINT_CHOICES.map((pt) => {
-                    const active = draft.points === pt
-                    return h.button
-                      .key(String(pt))
-                      .testId(`editor.points.${pt}`)
+                  pointsControl.items.map((opt) =>
+                    h.button
+                      .key(opt.value)
+                      .testId(`editor.points.${opt.value}`)
+                      .role(opt.attrs.role ?? "radio")
                       .style({
                         flexGrow: 1,
                         paddingTop: 5,
                         paddingBottom: 5,
                         borderRadius: 5,
-                        backgroundColor: active ? p.cardHover : "transparent",
-                        color: active ? p.ink : p.inkSoft,
+                        backgroundColor: opt.checked ? p.cardHover : "transparent",
+                        color: opt.checked ? p.ink : p.inkSoft,
                         fontSize: 12,
                         fontWeight: 600,
                         textAlign: "center"
                       })
-                      .on("click", Msg.SelectedEditPoints({ points: pt }))
-                      .children(`${pt}pt`)
-                  })
+                      .on(
+                        "click",
+                        Msg.SelectedEditPoints({ points: Number(opt.value) })
+                      )
+                      .children(opt.label)
+                  )
                 )
             ),
           h.box
@@ -387,3 +420,4 @@ export const editorModal = (
             )
         )
     )
+}

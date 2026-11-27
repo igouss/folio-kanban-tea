@@ -1,5 +1,6 @@
 import { Command, Head, UiSchema } from "@effect/ui"
 import { Gpui } from "@folio/effect-ui-gpui"
+import { createBoardHistory, formatTransferNotice } from "@folio/effect-ui-sdk"
 import { Effect, Option, Schema } from "effect"
 import {
   Column,
@@ -33,6 +34,8 @@ export const KanbanDesktopModel = Schema.Struct({
   newCardTitle: Schema.String,
   editDraft: Schema.OptionFromNullOr(EditDraft),
   notice: Schema.String,
+  canUndo: Schema.Boolean,
+  canRedo: Schema.Boolean,
   dispatchCount: Schema.Number,
   nextId: Schema.Number
 })
@@ -42,6 +45,8 @@ export const KanbanDesktopMessage = UiSchema.TaggedEnum({
   TypedSearchQuery: { value: Schema.String },
   SelectedPriorityFilter: { priority: PriorityFilter },
   ClickedToggleTheme: {},
+  ClickedUndo: {},
+  ClickedRedo: {},
   ClickedAddCard: { columnId: Schema.String },
   TypedNewCardTitle: { value: Schema.String },
   SubmittedNewCard: {},
@@ -88,6 +93,10 @@ const findCardTitle = (columns: ReadonlyArray<Column>, cardId: string): string =
 const findColumnName = (columns: ReadonlyArray<Column>, columnId: string): string =>
   columns.find((c) => c.id === columnId)?.name ?? columnId
 
+const boardHistory = createBoardHistory<ReadonlyArray<Column>>(DEFAULT_COLUMNS, {
+  limit: 50
+})
+
 export const KanbanDesktop = Gpui.component({
   name: "KanbanDesktop",
   props: KanbanDesktopProps,
@@ -96,8 +105,10 @@ export const KanbanDesktop = Gpui.component({
 }).make({
   init: ({ props }) => {
     const saved = Option.getOrUndefined(props.initialBoard)
+    const initialColumns = saved?.columns ?? DEFAULT_COLUMNS
+    boardHistory.reset(initialColumns)
     return {
-      columns: saved?.columns ?? DEFAULT_COLUMNS,
+      columns: initialColumns,
       theme: saved?.theme ?? ("paper" as const),
       searchQuery: "",
       priorityFilter: "all" as const,
@@ -105,6 +116,8 @@ export const KanbanDesktop = Gpui.component({
       newCardTitle: "",
       editDraft: Option.none(),
       notice: "",
+      canUndo: false,
+      canRedo: false,
       dispatchCount: 0,
       nextId: 1
     }
@@ -129,6 +142,30 @@ export const KanbanDesktop = Gpui.component({
         notice: `Switched GPUI theme to ${nextTheme === "paper" ? "Paper (Light)" : "Graphite (Dark)"}.`,
         dispatchCount: (n) => n + 1
       }).run(SaveBoard.make({ columns: $.model.columns, theme: nextTheme }))
+    },
+
+    ClickedUndo: ($) => {
+      const previous = boardHistory.undo()
+      if (previous === undefined) return $.model
+      return $.evolve({
+        columns: previous,
+        canUndo: boardHistory.canUndo(),
+        canRedo: boardHistory.canRedo(),
+        notice: "Undid last board change.",
+        dispatchCount: (n) => n + 1
+      }).run(SaveBoard.make({ columns: previous, theme: $.model.theme }))
+    },
+
+    ClickedRedo: ($) => {
+      const next = boardHistory.redo()
+      if (next === undefined) return $.model
+      return $.evolve({
+        columns: next,
+        canUndo: boardHistory.canUndo(),
+        canRedo: boardHistory.canRedo(),
+        notice: "Redid board change.",
+        dispatchCount: (n) => n + 1
+      }).run(SaveBoard.make({ columns: next, theme: $.model.theme }))
     },
 
     ClickedAddCard: ($, { columnId }) =>
@@ -170,11 +207,14 @@ export const KanbanDesktop = Gpui.component({
                 })
           )
           const laneName = findColumnName($.model.columns, columnId)
+          boardHistory.record(nextColumns)
           return $.evolve({
             columns: nextColumns,
             newCardColumnId: Option.none(),
             newCardTitle: "",
             nextId: (n) => n + 1,
+            canUndo: boardHistory.canUndo(),
+            canRedo: boardHistory.canRedo(),
             notice: `Added ${code} "${title}" to ${laneName}.`,
             dispatchCount: (n) => n + 1
           }).run(SaveBoard.make({ columns: nextColumns, theme: $.model.theme }))
@@ -192,9 +232,21 @@ export const KanbanDesktop = Gpui.component({
       const nextColumns = reorder($.model.columns, cardId, fromColumnId, toColumnId, 0)
       const title = findCardTitle($.model.columns, cardId)
       const laneName = findColumnName($.model.columns, toColumnId)
+      const destTotal =
+        nextColumns.find((col) => col.id === toColumnId)?.cards.length ?? 1
+      boardHistory.record(nextColumns)
       return $.evolve({
         columns: nextColumns,
-        notice: `Moved "${title}" -> ${laneName}.`,
+        canUndo: boardHistory.canUndo(),
+        canRedo: boardHistory.canRedo(),
+        notice: formatTransferNotice({
+          type: "drop",
+          cardId,
+          cardTitle: title,
+          laneTitle: laneName,
+          position: 1,
+          total: destTotal
+        }),
         dispatchCount: (n) => n + 1
       }).run(SaveBoard.make({ columns: nextColumns, theme: $.model.theme }))
     },
@@ -204,9 +256,12 @@ export const KanbanDesktop = Gpui.component({
       const nextColumns = $.model.columns.map((column) =>
         column.id === columnId ? removeCard(column, cardId).column : column
       )
+      boardHistory.record(nextColumns)
       return $.evolve({
         columns: nextColumns,
         editDraft: Option.none(),
+        canUndo: boardHistory.canUndo(),
+        canRedo: boardHistory.canRedo(),
         notice: `Deleted "${title}".`,
         dispatchCount: (n) => n + 1
       }).run(SaveBoard.make({ columns: nextColumns, theme: $.model.theme }))
@@ -315,9 +370,12 @@ export const KanbanDesktop = Gpui.component({
                   }
                   return col
                 })
+          boardHistory.record(nextColumns)
           return $.evolve({
             columns: nextColumns,
             editDraft: Option.none(),
+            canUndo: boardHistory.canUndo(),
+            canRedo: boardHistory.canRedo(),
             notice: `Saved ${updatedCard.code}.`,
             dispatchCount: (n) => n + 1
           }).run(SaveBoard.make({ columns: nextColumns, theme: $.model.theme }))
@@ -327,16 +385,20 @@ export const KanbanDesktop = Gpui.component({
     CancelledEditCard: ($) =>
       $.evolve({ editDraft: Option.none(), dispatchCount: (n) => n + 1 }),
 
-    ClickedResetDemo: ($) =>
-      $.evolve({
+    ClickedResetDemo: ($) => {
+      boardHistory.record(DEFAULT_COLUMNS)
+      return $.evolve({
         columns: DEFAULT_COLUMNS,
         searchQuery: "",
         priorityFilter: "all" as const,
         newCardColumnId: Option.none(),
         editDraft: Option.none(),
+        canUndo: boardHistory.canUndo(),
+        canRedo: boardHistory.canRedo(),
         notice: "Reset Kanban board to default cards.",
         dispatchCount: (n) => n + 1
-      }).run(SaveBoard.make({ columns: DEFAULT_COLUMNS, theme: $.model.theme })),
+      }).run(SaveBoard.make({ columns: DEFAULT_COLUMNS, theme: $.model.theme }))
+    },
 
     DismissedNotice: ($) =>
       $.evolve({ notice: "", dispatchCount: (n) => n + 1 })

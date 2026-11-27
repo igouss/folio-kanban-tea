@@ -1,5 +1,6 @@
 import { Fabric } from "@folio/effect-ui-fabric"
 import { appStateSubscription } from "@folio/effect-ui-fabric/subscription"
+import { createBoardHistory } from "@folio/effect-ui-sdk"
 import {
   DEFAULT_CARDS,
   createCard,
@@ -7,7 +8,8 @@ import {
   laneTitle as laneLabel,
   moveCard,
   nextCardCode as nextCode,
-  updateCard
+  updateCard,
+  type KanbanCard
 } from "@folio/kanban-core"
 import {
   type EditDraft,
@@ -32,25 +34,36 @@ const mapDraft = (
     ? { _tag: "Detail", draft: f(screen.draft) }
     : screen
 
+const mobileHistory = createBoardHistory<ReadonlyArray<KanbanCard>>(
+  [...DEFAULT_CARDS],
+  { limit: 50 }
+)
+
 export const KanbanMobile = Fabric.component({
   name: "KanbanMobile",
   model: KanbanMobileModel,
   message: KanbanMobileMessage
 }).make({
-  init: () => ({
-    cards: [...DEFAULT_CARDS],
-    activeLane: "in_progress" as const,
-    screen: { _tag: "Board" as const },
-    searchQuery: "",
-    priorityFilter: "all" as const,
-    quickTitle: "",
-    theme: "paper" as const,
-    appState: "active",
-    isBackgrounded: false,
-    backgroundTrips: 0,
-    statusBanner: "",
-    nextId: 1
-  }),
+  init: () => {
+    const initialCards = [...DEFAULT_CARDS]
+    mobileHistory.reset(initialCards)
+    return {
+      cards: initialCards,
+      activeLane: "in_progress" as const,
+      screen: { _tag: "Board" as const },
+      searchQuery: "",
+      priorityFilter: "all" as const,
+      quickTitle: "",
+      theme: "paper" as const,
+      appState: "active",
+      isBackgrounded: false,
+      backgroundTrips: 0,
+      statusBanner: "",
+      canUndo: false,
+      canRedo: false,
+      nextId: 1
+    }
+  },
 
   subscriptions: () => [
     appStateSubscription((state) =>
@@ -91,10 +104,13 @@ export const KanbanMobile = Fabric.component({
           createdAt: "2026-11-26T00:00:00.000Z"
         }
       )
+      mobileHistory.record(created.cards)
       return $.evolve({
         cards: created.cards,
         quickTitle: "",
         nextId: (n) => n + 1,
+        canUndo: mobileHistory.canUndo(),
+        canRedo: mobileHistory.canRedo(),
         statusBanner: `Added ${code} to ${laneLabel($.model.activeLane)}.`
       })
     },
@@ -102,8 +118,12 @@ export const KanbanMobile = Fabric.component({
     PressedMoveCard: ($, { cardId, toLane }) => {
       const card = $.model.cards.find((c) => c.id === cardId)
       if (!card) return $.model
+      const nextCards = moveCard($.model.cards, cardId, toLane)
+      mobileHistory.record(nextCards)
       return $.evolve({
-        cards: moveCard($.model.cards, cardId, toLane),
+        cards: nextCards,
+        canUndo: mobileHistory.canUndo(),
+        canRedo: mobileHistory.canRedo(),
         statusBanner: `Moved ${card.code} to ${laneLabel(toLane)}.`
       })
     },
@@ -111,9 +131,13 @@ export const KanbanMobile = Fabric.component({
     PressedDeleteCard: ($, { cardId }) => {
       const card = $.model.cards.find((c) => c.id === cardId)
       if (!card) return $.model
+      const nextCards = deleteCard($.model.cards, cardId)
+      mobileHistory.record(nextCards)
       return $.evolve({
-        cards: deleteCard($.model.cards, cardId),
+        cards: nextCards,
         screen: { _tag: "Board" as const },
+        canUndo: mobileHistory.canUndo(),
+        canRedo: mobileHistory.canRedo(),
         statusBanner: `Deleted ${card.code}.`
       })
     },
@@ -173,18 +197,44 @@ export const KanbanMobile = Fabric.component({
       if (title.length < 2) {
         return $.evolve({ statusBanner: "Title must be at least 2 characters." })
       }
+      const nextCards = updateCard($.model.cards, draft.cardId, {
+        title,
+        notes: draft.notes.trim(),
+        lane: draft.lane,
+        priority: draft.priority,
+        assignee: draft.assignee.trim() || "ME",
+        points: draft.points
+      })
+      mobileHistory.record(nextCards)
       return $.evolve({
-        cards: updateCard($.model.cards, draft.cardId, {
-          title,
-          notes: draft.notes.trim(),
-          lane: draft.lane,
-          priority: draft.priority,
-          assignee: draft.assignee.trim() || "ME",
-          points: draft.points
-        }),
+        cards: nextCards,
         activeLane: draft.lane,
         screen: { _tag: "Board" as const },
+        canUndo: mobileHistory.canUndo(),
+        canRedo: mobileHistory.canRedo(),
         statusBanner: `Saved ${draft.code}.`
+      })
+    },
+
+    PressedUndo: ($) => {
+      const prev = mobileHistory.undo()
+      if (prev === undefined) return $.model
+      return $.evolve({
+        cards: prev,
+        canUndo: mobileHistory.canUndo(),
+        canRedo: mobileHistory.canRedo(),
+        statusBanner: "Undid last change."
+      })
+    },
+
+    PressedRedo: ($) => {
+      const next = mobileHistory.redo()
+      if (next === undefined) return $.model
+      return $.evolve({
+        cards: next,
+        canUndo: mobileHistory.canUndo(),
+        canRedo: mobileHistory.canRedo(),
+        statusBanner: "Redid change."
       })
     },
 
@@ -196,16 +246,21 @@ export const KanbanMobile = Fabric.component({
       })
     },
 
-    PressedResetDemo: ($) =>
-      $.evolve({
-        cards: [...DEFAULT_CARDS],
+    PressedResetDemo: ($) => {
+      const nextCards = [...DEFAULT_CARDS]
+      mobileHistory.record(nextCards)
+      return $.evolve({
+        cards: nextCards,
         activeLane: "in_progress" as const,
         screen: { _tag: "Board" as const },
         searchQuery: "",
         priorityFilter: "all" as const,
         quickTitle: "",
+        canUndo: mobileHistory.canUndo(),
+        canRedo: mobileHistory.canRedo(),
         statusBanner: "Reset board to default cards."
-      }),
+      })
+    },
 
     DismissedBanner: ($) => $.evolve({ statusBanner: "" }),
 

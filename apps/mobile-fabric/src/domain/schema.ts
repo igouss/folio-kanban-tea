@@ -40,6 +40,8 @@ export const KanbanMobileModel = Schema.Struct({
   isBackgrounded: Schema.Boolean,
   backgroundTrips: Schema.Number,
   statusBanner: Schema.String,
+  canUndo: Schema.Boolean,
+  canRedo: Schema.Boolean,
   nextId: Schema.Number
 })
 export type KanbanMobileModel = typeof KanbanMobileModel.Type
@@ -61,6 +63,8 @@ export const KanbanMobileMessage = UiSchema.TaggedEnum({
   SelectedDraftPriority: { priority: Priority },
   SelectedDraftPoints: { points: Schema.Number },
   PressedSaveDraft: {},
+  PressedUndo: {},
+  PressedRedo: {},
   PressedToggleTheme: {},
   PressedResetDemo: {},
   DismissedBanner: {},

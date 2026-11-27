@@ -1,8 +1,8 @@
 # Folio Kanban — Native `@effect/ui` Across Web, Desktop GPU & Mobile
 
-**One framework (`@effect/ui` + Effect v4). Three completely different native & web rendering engines. Zero React reconcilers. Zero WebViews.**
+**One framework (`@effect/ui` + Effect v4). One framework-agnostic interaction layer ([`@ui-sdk/core`](https://ui-sdk.dev)). Three completely different native & web rendering engines. Zero React reconcilers. Zero WebViews.**
 
-Folio Kanban is a proof-of-concept monorepo demonstrating how **one unified [`@effect/ui`](https://ui.effect.website) + Effect v4 architecture** and a shared functional core ([`@folio/kanban-core`](./packages/kanban-core)) can drive three distinct native & web rendering engines directly through `@effect/ui`'s host-agnostic `Renderer.Host<Node>` and `View.Vocabulary` seam:
+Folio Kanban is a proof-of-concept monorepo demonstrating how **one unified [`@effect/ui`](https://ui.effect.website) + Effect v4 architecture**, a shared functional core ([`@folio/kanban-core`](./packages/kanban-core)), and framework-agnostic interaction behaviors from **[`@ui-sdk/core`](https://ui-sdk.dev)** ([`@folio/effect-ui-sdk`](./packages/effect-ui-sdk)) can drive three distinct native & web rendering engines directly through `@effect/ui`'s host-agnostic `Renderer.Host<Node>` and `View.Vocabulary` seam:
 
 1. **Web DOM** (`apps/web`) — `@effect/ui` + `@effect/ui/html` (`BrowserHost`) + Vite
 2. **Desktop Native GPU** (`apps/desktop-gpui`) — `@effect/ui` + custom **`@folio/effect-ui-gpui`** `Renderer.Host` driving **Zed's GPUI** directly in-process via `@gpuix/native` (Wayland / Metal — no Electron, no WebView, no DOM shim)
@@ -42,6 +42,15 @@ This project demonstrates a radically different architectural path built entirel
                          │  seed cards & immutable transitions   │
                          └───────────────────┬───────────────────┘
                                              │
+                         ┌───────────────────▼───────────────────┐
+                         │       @folio/effect-ui-sdk            │
+                         │   Vercel UI SDK (@ui-sdk/core) bridge │
+                         │  segmentedControl · tabs · progress   │
+                         │  text-match · createUndoStack         │
+                         │  kanbanBoard (definePrimitive +       │
+                         │  createTransfer + createSelection)    │
+                         └───────────────────┬───────────────────┘
+                                             │
                        ┌─────────────────────▼─────────────────────┐
                        │         @effect/ui + Effect 4.1.6         │
                        │   Component · UiSchema · Command.Service  │
@@ -68,6 +77,14 @@ This project demonstrates a radically different architectural path built entirel
 - **`@folio/effect-ui-fabric`** (`packages/effect-ui-fabric`):
   - Defines a typed **`Fabric`** vocabulary (`Fabric.component`, `h.view`, `h.text`, `h.pressable`, `h.scrollView`, `h.textInput`) with `textParents: ["text"]` enforced by `@effect/ui`, React Native styles, Tailwind `@ng-native/tailwind` classes, and typed native events (`press`, `changeText`, `layout`, `scroll`).
   - Implements `Renderer.Host<EngineNode>` directly on `@ng-native/fabric`'s `Engine` — wiring Pressability touch responders (`engine.setResponder`), controlled `TextInput` `eventCount`/`setTextAndSelection` reconciliation, Android `ScrollView` `collapsable: false` safety, single-commit `engine.commit()` per flush, and an `@effect/ui` `Subscription.make` for native `AppState` lifecycle transitions.
+- **`@folio/effect-ui-sdk`** (`packages/effect-ui-sdk`):
+  - Bridges **[`@ui-sdk/core`](https://ui-sdk.dev)**'s framework-agnostic interaction behaviors and component building blocks directly into `@effect/ui` across Web DOM, Desktop Zed GPUI, and Mobile React Native Fabric (Hermes):
+    - **`segmentedControl`** (`@ui-sdk/core/segmented-control`) → Priority filters, Web density toggle, and editor Lane/Priority/Story Points pickers (`role="radiogroup"`/`"radio"`, `aria-checked`, keyboard arrow navigation on Web).
+    - **`tabs`** (`@ui-sdk/core/tabs`) → Mobile 4-lane tab bar (`role="tablist"`/`"tab"`, `aria-selected`, panel presence).
+    - **`progress`** (`@ui-sdk/core/progress`) → Unified Velocity `progressbar` math, ARIA attributes, status (`progressing`/`complete`), and formatted percentages on all three platforms.
+    - **`@ui-sdk/core/text-match`** (`fuzzyScore`, `matchRanges`, `matchSegments`) → Locale-aware fuzzy card filtering, ranking, and `<mark>` match highlighting.
+    - **`createUndoStack`** & **`transferMessage`** (`@ui-sdk/core`) → Undo/Redo history on Desktop GPUI and Mobile Fabric, plus standardized screen-reader transfer announcements.
+    - **`kanbanBoard`** (`definePrimitive` + `createTransfer` + `createSelection` + `agent.actions`) → Custom framework-agnostic Kanban primitive tested in `@ui-sdk/core` strict mode and compatible with `@ui-sdk/core/agent`.
 - **`@folio/kanban-core`** (`packages/kanban-core`):
   - Exposes pure domain logic (`@folio/kanban-core`), shared Effect v4 Schemas (`@folio/kanban-core/schema`), and shared **Paper & Graphite** editorial design palettes (`@folio/kanban-core/theme`) consumed across all three delivery targets.
 
@@ -78,22 +95,24 @@ Every platform shares the exact same mental model and library (`@effect/ui` + `e
 - **Effects as Values**: Side effects (`TaskStore`, `BoardStorage` disk persistence, query invalidation, debounced autosave timers, native `AppState` streams) are typed `Command.Service`, `Query.Service`, `Subscription.make`, and `Layer` values.
 
 ### 4. Deterministic Testing Across All Three Targets in Node
-All 14 test suites run in ~2 seconds in Node with **no browser, no GPU window, and no mobile simulator required**:
+All 22 tests run in ~3 seconds in Node with **no browser, no GPU window, and no mobile simulator required**:
 - **Core (`packages/kanban-core`)**: Pure unit tests for WIP limits, velocity, filtering, and CRUD transitions.
-- **Web (`apps/web`)**: `@effect/ui/testing` `Story.make`, `HtmlScene.make`, and `TestHost.mount`.
-- **Desktop GPU (`apps/desktop-gpui`)**: Mounts `KanbanDesktop` directly via `GpuiHost.mount` onto `createFakeGpuixRenderer()` — verifying real `applyBatch` JSON mutations, `Head.title` window updates, native click/change/submit events, Paper ↔ Graphite theme switching, editor modal, and `BoardStorage` persistence.
-- **Mobile Fabric (`apps/mobile-fabric`)**: Mounts `KanbanMobile` directly via `FabricHost.mountApp` onto `@ng-native/fabric`'s `Engine` + `createFakeFabric()` + compiled `@ng-native/tailwind` stylesheet — firing real Fabric responder touches (`topTouchStart`/`topTouchEnd`), native `TextInput` `topChange` events, and `AppState` `Subscription` transitions, asserting directly on the committed Fabric shadow tree and single-commit counts.
+- **UI SDK (`packages/effect-ui-sdk`)**: Strict-mode (`__UI_SDK_STRICT__`) tests for `readSegmentedControl`, `readTabs`, `readProgress`, fuzzy `filterAndRankCards`/`highlightText`, custom `kanbanBoard` (`definePrimitive` + `createTransfer` + `createSelection`), `createBoardHistory` (`createUndoStack`), and `@ui-sdk/core/agent` tool schemas.
+- **Web (`apps/web`)**: `@effect/ui/testing` `Story.make`, `HtmlScene.make` (verifying UI SDK `radiogroup`/`radio`/`progressbar` ARIA), and `TestHost.mount`.
+- **Desktop GPU (`apps/desktop-gpui`)**: Mounts `KanbanDesktop` directly via `GpuiHost.mount` onto `createFakeGpuixRenderer()` — verifying real `applyBatch` JSON mutations, `Head.title` window updates, native click/change/submit events, Paper ↔ Graphite theme switching, editor modal, Undo/Redo (`createUndoStack`), and `BoardStorage` persistence.
+- **Mobile Fabric (`apps/mobile-fabric`)**: Mounts `KanbanMobile` directly via `FabricHost.mountApp` onto `@ng-native/fabric`'s `Engine` + `createFakeFabric()` + compiled `@ng-native/tailwind` stylesheet — firing real Fabric responder touches (`topTouchStart`/`topTouchEnd`), native `TextInput` `topChange` events, UI SDK `tabs`/`progress`/Undo, and `AppState` `Subscription` transitions, asserting directly on the committed Fabric shadow tree and single-commit counts.
 
 ---
 
 ## What Was Accomplished
 
-| Delivery Target | Directory | `@effect/ui` Host & Capabilities | Verification |
+| Delivery Target | Directory | `@effect/ui` + `@ui-sdk/core` Capabilities | Verification |
 | --- | --- | --- | --- |
-| **Shared Core** | `packages/kanban-core` | Canonical 4-lane model (`Backlog`, `In Progress` [WIP 3], `In Review` [WIP 2], `Done`), seed cards, pure move/create/update/delete, search & priority filters, WIP & velocity math | 3/3 `node:test` passing |
-| **Web DOM** | `apps/web` | `@effect/ui/html` `BrowserHost`: 4-column drag-and-drop board with View Transitions, `Query.Service` + `TasksTag` invalidation, `Validation.make` form (`/new`), card editor (`/cards/:id`) with 2s debounced autosave `Subscription` & native `<dialog>`, live **MVU Runtime Trace** drawer (`I` shortcut) | 6/6 tests (`Story`, `HtmlScene`, `TestHost`), `tsc --noEmit`, Vite build |
-| **Desktop GPU** | `apps/desktop-gpui` | `@folio/effect-ui-gpui` `GpuiHost`: Native Wayland/Metal Zed GPUI window (`@gpuix/native`), `Head.title` live window-title sync, live **Paper ↔ Graphite** theme toggle, inline Quick Add, in-window card editor modal, `SaveBoard` `Command.Service` + `BoardStorage` file persistence | `GpuiHost` + `FakeGpuixRenderer` e2e test, `tsc --noEmit`, verified live in native Wayland GPUI window |
-| **Mobile Fabric** | `apps/mobile-fabric` | `@folio/effect-ui-fabric` `FabricHost`: Native iOS/Android Expo SDK 57 dev client driving Fabric directly (`registerApp` + `@ng-native/fabric`), mobile lane tabs, native `ScrollView` cards, controlled `TextInput` search & Quick Add, card detail screen, `@effect/ui` `Subscription` for native `AppState`, `@ng-native/tailwind`, **Paper / Graphite** toggle | 4/4 `fakeFabric` view-tree tests, `tsc --noEmit`, verified live on **Android 16 `x86_64` desktop emulator** |
+| **Shared Core** | `packages/kanban-core` | Canonical 4-lane model (`Backlog`, `In Progress` [WIP 3], `In Review` [WIP 2], `Done`), seed cards, pure move/create/update/delete, WIP & velocity math, Paper & Graphite palettes | 3/3 `node:test` passing |
+| **UI SDK Bridge** | `packages/effect-ui-sdk` | `@ui-sdk/core` framework-agnostic behaviors (`segmentedControl`, `tabs`, `progress`, `text-match`, `createUndoStack`, `transferMessage`, custom `kanbanBoard` primitive with `createTransfer` + `createSelection`) | 7/7 `node:test` passing (strict mode) |
+| **Web DOM** | `apps/web` | `@effect/ui/html` `BrowserHost` + `@folio/effect-ui-sdk`: 4-column drag-and-drop board with View Transitions, UI SDK `radiogroup`/`progressbar` ARIA & keyboard nav, fuzzy search + `<mark>` highlights, `Query.Service` invalidation, `Validation.make` form (`/new`), debounced autosave editor, live **MVU Runtime Trace** drawer | 7/7 tests (`Story`, `HtmlScene`, `TestHost`), `tsc --noEmit`, Vite build |
+| **Desktop GPU** | `apps/desktop-gpui` | `@folio/effect-ui-gpui` `GpuiHost` + `@folio/effect-ui-sdk`: Native Wayland/Metal Zed GPUI window (`@gpuix/native`), UI SDK segmented filters/pickers, progress, fuzzy search, **Undo/Redo** (`createUndoStack`), `transferMessage` notices, live **Paper ↔ Graphite** theme toggle, `BoardStorage` persistence | `GpuiHost` + `FakeGpuixRenderer` e2e test, `tsc --noEmit`, verified live in native Wayland GPUI window |
+| **Mobile Fabric** | `apps/mobile-fabric` | `@folio/effect-ui-fabric` `FabricHost` + `@folio/effect-ui-sdk`: Native iOS/Android Expo SDK 57 dev client driving Fabric directly (`@ng-native/fabric`), UI SDK `tabs` lane bar, `segmentedControl` filters/pickers, `progress` bar, fuzzy search, **Undo/Redo**, `AppState` `Subscription`, `@ng-native/tailwind`, **Paper / Graphite** toggle | 4/4 `fakeFabric` view-tree tests, `tsc --noEmit`, Android Metro bundle verified |
 
 ---
 
@@ -106,6 +125,7 @@ All 14 test suites run in ~2 seconds in Node with **no browser, no GPU window, a
 ├── tsconfig.base.json            # Shared strict + exactOptionalPropertyTypes config
 ├── packages/
 │   ├── kanban-core/              # @folio/kanban-core (pure domain, ./schema, ./theme)
+│   ├── effect-ui-sdk/            # @folio/effect-ui-sdk (@ui-sdk/core behaviors & kanbanBoard primitive)
 │   ├── effect-ui-gpui/           # @folio/effect-ui-gpui (@effect/ui Renderer.Host for Zed GPUI)
 │   └── effect-ui-fabric/         # @folio/effect-ui-fabric (@effect/ui Renderer.Host for RN Fabric)
 └── apps/
@@ -133,8 +153,8 @@ npm install
 ### 2. Run all tests and type-checks across every workspace
 
 ```bash
-npm test          # Runs core (3) + web (6) + desktop-gpui (1 e2e) + mobile-fabric (4)
-npm run typecheck # Strict + exactOptionalPropertyTypes check across core, web, desktop-gpui, and mobile-fabric
+npm test          # Runs core (3) + sdk (7) + web (7) + desktop-gpui (1 e2e) + mobile-fabric (4)
+npm run typecheck # Strict + exactOptionalPropertyTypes check across all 5 workspaces
 ```
 
 ### 3. Launch each delivery platform
@@ -170,6 +190,7 @@ npm run ios
 ## Credits & Upstream Projects
 
 - **[@effect/ui](https://ui.effect.website)** & **[Effect](https://effect.website)** — Effect-TS team
+- **[UI SDK (`@ui-sdk/core`)](https://ui-sdk.dev)** — Vercel Labs framework-agnostic interaction behaviors & component building blocks
 - **[gpuix](https://github.com/remorses/gpuix)** & **[GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui)** — Zed GPU UI framework & Node/Bun bindings
 - **[@ng-native/fabric](https://github.com/ng-native/ng-native)** — Direct React Native Fabric engine without React
 - Inspired by the pioneering native TEA host explorations in **[Manzanita-Research/foldkit-native](https://github.com/Manzanita-Research/foldkit-native)** and **[giovannilondero/foldkit-native](https://github.com/giovannilondero/foldkit-native)**

@@ -127,6 +127,12 @@ describe("Folio Kanban Mobile (@effect/ui + React Native Fabric)", () => {
     tap("lane.tab.review")
     await settle(() => byTestID("card.card-101") !== undefined)
     expect(fabric.render()).toContain('RawText "FOL-101"')
+
+    // Undo restores FOL-101 back to In Progress via @ui-sdk/core createUndoStack
+    tap("board.undo")
+    await settle(hasText("Undid last change."))
+    tap("lane.tab.in_progress")
+    await settle(() => byTestID("card.card-101") !== undefined)
     app.dispose()
   })
 
