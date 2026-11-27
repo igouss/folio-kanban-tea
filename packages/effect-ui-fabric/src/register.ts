@@ -1,4 +1,5 @@
 import type { Component, View } from "@effect/ui"
+import type * as Layer from "effect/Layer"
 import {
   Engine,
   type StyleSheet as CssStyleSheet,
@@ -12,7 +13,6 @@ import {
   StyleSheet,
   processColor
 } from "react-native"
-import type * as Fabric from "./Fabric.ts"
 import { mountApp, type MountedFabricApp } from "./FabricHost.ts"
 import { currentConditions, watchConditions } from "./css/conditions.ts"
 import { attachStyles } from "./css/index.ts"
@@ -20,6 +20,7 @@ import { attachStyles } from "./css/index.ts"
 export type RegisterAppOptions = Readonly<{
   appKey?: string | undefined
   styleSheet?: CssStyleSheet | undefined
+  layer?: Layer.Layer<any> | undefined
 }>
 
 type RunningApp = Readonly<{
@@ -69,11 +70,12 @@ export const registerApp = <
   Model,
   Msg,
   Events,
+  R,
   V extends View.Elements
 >(
-  component: Component.Members<Name, Props, Model, Msg, Events, Fabric.Host, V, any>,
+  component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
   props: Props,
-  { appKey = "main", styleSheet }: RegisterAppOptions = {}
+  { appKey = "main", styleSheet, layer }: RegisterAppOptions = {}
 ): void => {
   registerPlatformComponents(Platform.OS)
 
@@ -105,7 +107,7 @@ export const registerApp = <
       component,
       props,
       engine,
-      { platform: Platform.OS }
+      { platform: Platform.OS, layer }
     )
     registration.running = {
       surfaceId,

@@ -2,10 +2,14 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import { GpuiHost } from "@folio/effect-ui-gpui"
 import { createFakeGpuixRenderer } from "@folio/effect-ui-gpui/testing"
+import {
+  FolioApp,
+  desktopAppProps,
+  makeAppLayer,
+  makeMemoryStorageLayer
+} from "@folio/folio-app"
 import { canRedoHistory, canUndoHistory, cardsInLane } from "@folio/kanban-core"
-import { Effect, Layer, Option } from "effect"
-import { KanbanDesktop, SaveBoard } from "../src/components/KanbanDesktop.ts"
-import { makeMemoryStorageLayer } from "../src/services/storage.ts"
+import { Effect } from "effect"
 
 const tick = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 15))
@@ -18,21 +22,17 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 500): Promise<void>
   }
 }
 
-describe("Folio Kanban Desktop (@effect/ui + Zed GPUI Host)", () => {
-  it("mounts on GPUI, updates window title, moves cards, toggles theme, adds & edits cards", async () => {
+describe("Folio Kanban Desktop (Unified @folio/folio-app on Zed GPUI Host)", () => {
+  it("mounts unified FolioApp on GPUI, updates window title, moves cards, toggles theme, adds & edits cards", async () => {
     const renderer = createFakeGpuixRenderer()
     const storage = makeMemoryStorageLayer()
-    const appLayer = Layer.merge(
-      storage.layer,
-      SaveBoard.layer.pipe(Layer.provide(storage.layer))
-    )
 
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           const root = yield* GpuiHost.mount(
-            KanbanDesktop,
-            { initialBoard: Option.none() },
+            FolioApp,
+            desktopAppProps(),
             renderer
           )
 
@@ -45,7 +45,9 @@ describe("Folio Kanban Desktop (@effect/ui + Zed GPUI Host)", () => {
 
           // Move FOL-101 from In Progress to In Review via native GPUI click
           renderer.clickByTestId("card.next.card-101")
-          yield* Effect.promise(() => waitFor(() => storage.getSaved() !== undefined))
+          yield* Effect.promise(() =>
+            waitFor(() => storage.getSaved() !== undefined)
+          )
 
           const afterMove = root.model()!
           const inProgress = cardsInLane(afterMove.cards, "in_progress")
@@ -69,9 +71,9 @@ describe("Folio Kanban Desktop (@effect/ui + Zed GPUI Host)", () => {
           // Quick-add a card to Backlog via native GPUI input + submit
           renderer.clickByTestId("lane.add.backlog")
           yield* Effect.promise(tick)
-          renderer.typeByTestId("add.input", "Ship @effect/ui on Zed GPUI")
+          renderer.typeByTestId("quick.input", "Ship @effect/ui on Zed GPUI")
           yield* Effect.promise(tick)
-          renderer.submitByTestId("add.input", "Ship @effect/ui on Zed GPUI")
+          renderer.submitByTestId("quick.input", "Ship @effect/ui on Zed GPUI")
           yield* Effect.promise(tick)
 
           const backlog = cardsInLane(root.model()!.cards, "backlog")
@@ -93,7 +95,7 @@ describe("Folio Kanban Desktop (@effect/ui + Zed GPUI Host)", () => {
           // Open editor modal, edit title, move lane, and save
           renderer.clickByTestId("card.open.card-104")
           yield* Effect.promise(tick)
-          assert.ok(renderer.findByTestId("editor.modal") !== undefined)
+          assert.ok(renderer.findByTestId("editor.view") !== undefined)
           renderer.typeByTestId("editor.title", "Refined GPUI native host")
           yield* Effect.promise(tick)
           renderer.clickByTestId("editor.lane.done")
@@ -101,7 +103,7 @@ describe("Folio Kanban Desktop (@effect/ui + Zed GPUI Host)", () => {
           renderer.clickByTestId("editor.save")
           yield* Effect.promise(tick)
 
-          assert.equal(renderer.findByTestId("editor.modal"), undefined)
+          assert.equal(renderer.findByTestId("editor.view"), undefined)
           const done = cardsInLane(root.model()!.cards, "done")
           assert.equal(done[0]?.title, "Refined GPUI native host")
 
@@ -122,7 +124,7 @@ describe("Folio Kanban Desktop (@effect/ui + Zed GPUI Host)", () => {
             "Refined GPUI native host"
           )
         })
-      ).pipe(Effect.provide(appLayer))
+      ).pipe(Effect.provide(makeAppLayer({ storage: storage.layer })))
     )
   })
 })

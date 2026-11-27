@@ -1,11 +1,18 @@
 import { Renderer } from "@effect/ui"
 import type { Component, View } from "@effect/ui"
+import { Ui } from "@folio/effect-ui-universal"
 import { claimHost, type Engine, type EngineNode, type ResponderEvent } from "@ng-native/fabric"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
+import type * as Layer from "effect/Layer"
 import * as Scope from "effect/Scope"
 import * as Fabric from "./Fabric.ts"
+import {
+  IGNORED_UNIVERSAL_PROPS,
+  mapFabricTag,
+  normalizeFabricStyle
+} from "./universal.ts"
 
 const CONTROLLED_PROPS: ReadonlySet<string> = new Set(["value"])
 const KEEP_SELECTION = -1
@@ -71,6 +78,7 @@ interface EventRecord {
 export interface FabricHostOptions {
   readonly platform?: string | undefined
   readonly requestAnimationFrame?: ((callback: () => void) => void) | undefined
+  readonly layer?: Layer.Layer<any> | undefined
 }
 
 export interface FabricHostHandle {
@@ -251,9 +259,12 @@ export const makeHost = (
 
   const host: Renderer.Host<EngineNode> = {
     createElement(tag) {
-      const fabricTag = tag === "pressable" ? "view" : tag
+      const fabricTag = mapFabricTag(tag)
       const node = engine.createElement(fabricTag)
       claimHost(node)
+      if (tag === "textarea") {
+        engine.setProp(node, "multiline", true)
+      }
       return node
     },
 
@@ -276,8 +287,24 @@ export const makeHost = (
     },
 
     setProp(node, name, value) {
+      if (IGNORED_UNIVERSAL_PROPS.has(name)) return
+      if (name === "testId") {
+        engine.setProp(node, "testID", value === undefined ? null : value)
+        return
+      }
+      if (name === "aria-label") {
+        engine.setProp(node, "accessibilityLabel", value === undefined ? null : value)
+        return
+      }
+      if (name === "role") {
+        engine.setProp(node, "accessibilityRole", value === undefined ? null : value)
+        return
+      }
       if (name === "style") {
-        const nextStyle = value as Readonly<Record<string, unknown>> | undefined
+        const nextStyle = normalizeFabricStyle(
+          node.name,
+          value as Readonly<Record<string, unknown>> | undefined
+        )
         if (!isShallowEqual(lastStyles.get(node), nextStyle)) {
           if (nextStyle === undefined) lastStyles.delete(node)
           else lastStyles.set(node, nextStyle)
@@ -374,9 +401,9 @@ export const makeHost = (
         }
       }
 
-      // 3. Any other native Fabric events (layout, scroll, etc.)
+      // 3. Any other native Fabric events (layout, scroll, submit, etc.)
       const otherNames = Object.keys(handlers).filter(
-        (k) => k !== "press" && k !== "changeText"
+        (k) => k !== "press" && k !== "changeText" && k !== "keyDown"
       )
       if (otherNames.length === 0) {
         const existing = eventRecords.get(node)
@@ -406,9 +433,11 @@ export const makeHost = (
       for (const name of otherNames) {
         if (!record.listeners.has(name)) {
           const current = record
+          const fabricEvent =
+            name === "submit" ? "topSubmitEditing" : topLevelTypeOf(name)
           record.listeners.set(
             name,
-            engine.setEventListener(node, topLevelTypeOf(name), (event) => {
+            engine.setEventListener(node, fabricEvent, (event) => {
               const handler = current.handlers[name]
               if (handler === undefined) return
               const native = (event as { nativeEvent?: Record<string, unknown> }).nativeEvent ?? {}
@@ -417,7 +446,16 @@ export const makeHost = (
                   ? (native["layout"] ?? { x: 0, y: 0, width: 0, height: 0 })
                   : name === "scroll"
                     ? ((native["contentOffset"] as Record<string, unknown> | undefined) ?? { x: 0, y: 0 })
-                    : native
+                    : name === "submit"
+                      ? {
+                          text:
+                            typeof native["text"] === "string"
+                              ? native["text"]
+                              : (textFields.get(node)?.lastNativeText ??
+                                textFields.get(node)?.desiredValue ??
+                                "")
+                        }
+                      : native
               current.dispatch(name, handler, payload)
             })
           )
@@ -425,7 +463,7 @@ export const makeHost = (
       }
     },
 
-    elements: [Fabric.name],
+    elements: [Fabric.name, Ui.name],
     controlled: CONTROLLED_PROPS,
     runsMounts: true,
 
@@ -476,20 +514,26 @@ export const mount = <
 ): Effect.Effect<
   Renderer.Root<Model, Msg>,
   never,
-  Exclude<R | RP, Fabric.Host | Renderer.Renderer> | Scope.Scope
+  Exclude<R | RP, Fabric.Host | Ui.Host | Renderer.Renderer> | Scope.Scope
 > =>
   Effect.gen(function* () {
     const handle = makeHost(engine, options)
     yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
     const ctx = Context.make(Renderer.Renderer, { host: handle.host }).pipe(
-      Context.add(Fabric.Host, { platform: options.platform ?? "unknown" })
+      Context.add(Fabric.Host, { platform: options.platform ?? "unknown" }),
+      Context.add(Ui.Host, { platform: "mobile" })
     )
-    return yield* (Renderer.mount(
+    const mounted = (Renderer.mount(
       component as any,
       props as any,
       handle.container
     ) as Effect.Effect<Renderer.Root<Model, Msg>, never, any>).pipe(
       Effect.provideContext(ctx)
+    )
+    return yield* (
+      options.layer !== undefined
+        ? mounted.pipe(Effect.provide(options.layer))
+        : mounted
     )
   }) as any
 
@@ -499,9 +543,10 @@ export const mountApp = <
   Model,
   Msg,
   Events,
+  R,
   V extends View.Elements
 >(
-  component: Component.Members<Name, Props, Model, Msg, Events, Fabric.Host, V, any>,
+  component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
   props: Props,
   engine: Engine,
   options: FabricHostOptions = {}

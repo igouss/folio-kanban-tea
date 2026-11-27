@@ -7,6 +7,12 @@
     ".": "./src/index.ts",
     "./testing": "./src/testing.ts"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@folio/effect-ui-universal": "*"
+  },
   "peerDependencies": {
     "@effect/ui": "*",
     "@gpuix/native": "0.10.0",

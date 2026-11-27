@@ -1,7 +1,7 @@
 {
   "name": "folio-kanban-monorepo",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "workspaces": [
     "packages/*",
@@ -16,16 +16,22 @@
     "ios:mobile": "npm -w @folio/mobile-fabric run ios",
     "test:core": "npm -w @folio/kanban-core test",
     "test:sdk": "npm -w @folio/effect-ui-sdk test",
+    "test:universal": "npm -w @folio/effect-ui-universal test",
+    "test:app": "npm -w @folio/folio-app test",
     "test:web": "npm -w @folio/web test",
     "test:desktop": "npm -w @folio/desktop-gpui test",
     "test:mobile": "npm -w @folio/mobile-fabric test",
-    "test": "npm run test:core && npm run test:sdk && npm run test:web && npm run test:desktop && npm run test:mobile",
+    "test": "npm run test:core && npm run test:sdk && npm run test:universal && npm run test:app && npm run test:web && npm run test:desktop && npm run test:mobile",
     "typecheck:core": "npm -w @folio/kanban-core run typecheck",
     "typecheck:sdk": "npm -w @folio/effect-ui-sdk run typecheck",
+    "typecheck:universal": "npm -w @folio/effect-ui-universal run typecheck",
+    "typecheck:gpui": "npm -w @folio/effect-ui-gpui run typecheck",
+    "typecheck:fabric": "npm -w @folio/effect-ui-fabric run typecheck",
+    "typecheck:app": "npm -w @folio/folio-app run typecheck",
     "typecheck:web": "npm -w @folio/web run typecheck",
     "typecheck:desktop": "npm -w @folio/desktop-gpui run typecheck",
     "typecheck:mobile": "npm -w @folio/mobile-fabric run typecheck",
-    "typecheck": "npm run typecheck:core && npm run typecheck:sdk && npm run typecheck:web && npm run typecheck:desktop && npm run typecheck:mobile"
+    "typecheck": "npm run typecheck:core && npm run typecheck:sdk && npm run typecheck:universal && npm run typecheck:gpui && npm run typecheck:fabric && npm run typecheck:app && npm run typecheck:web && npm run typecheck:desktop && npm run typecheck:mobile"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

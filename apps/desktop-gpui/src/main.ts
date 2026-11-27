@@ -1,26 +1,25 @@
 import { GpuiHost } from "@folio/effect-ui-gpui"
-import { Effect, Layer, Option } from "effect"
-import { KanbanDesktop, SaveBoard } from "./components/KanbanDesktop.ts"
-import { BoardStorage, makeFileStorageLayer } from "./services/storage.ts"
+import {
+  FolioApp,
+  desktopAppProps,
+  loadInitialBoard,
+  makeAppLayer
+} from "@folio/folio-app"
+import { Effect } from "effect"
+import { makeFileStorageLayer } from "./storage.ts"
 
-const loadInitialProps = Effect.gen(function* () {
-  const storage = yield* BoardStorage
-  const saved = yield* storage.load
-  return { initialBoard: Option.fromUndefinedOr(saved) }
-})
-
-const storageLayer = makeFileStorageLayer()
-const appLayer = Layer.merge(
-  storageLayer,
-  SaveBoard.layer.pipe(Layer.provide(storageLayer))
+const initialProps = Effect.map(loadInitialBoard, (saved) =>
+  desktopAppProps(saved)
 )
 
-const program = GpuiHost.run(KanbanDesktop, loadInitialProps, {
+const program = GpuiHost.run(FolioApp, initialProps, {
   title: "Folio Kanban · @effect/ui (GPUI)",
   appId: "dev.folio.kanban",
   width: 1280,
   height: 800
-}).pipe(Effect.provide(appLayer))
+}).pipe(
+  Effect.provide(makeAppLayer({ storage: makeFileStorageLayer() }))
+)
 
 Effect.runPromise(program).catch((error) => {
   console.error("[folio-desktop-gpui]", error)

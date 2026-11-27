@@ -1,8 +1,17 @@
 import "expo"
 
 import { registerApp } from "@folio/effect-ui-fabric/register"
+import { appState } from "@folio/effect-ui-fabric/subscription"
+import {
+  FolioApp,
+  makeAppLayer,
+  makeLifecycleLayer,
+  mobileAppProps
+} from "@folio/folio-app"
 import tailwind from "../.tailwind/app.tailwind.js"
-import { KanbanMobile } from "./components/KanbanMobile"
 
-// Drives React Native Fabric directly from @effect/ui via @ng-native/fabric with no React reconciler.
-registerApp(KanbanMobile, {}, { styleSheet: tailwind })
+// Drives React Native Fabric directly from the unified @folio/folio-app via @ng-native/fabric.
+registerApp(FolioApp, mobileAppProps(), {
+  styleSheet: tailwind,
+  layer: makeAppLayer({ lifecycle: makeLifecycleLayer(appState) })
+})

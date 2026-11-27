@@ -1,6 +1,6 @@
-import { Renderer } from "@effect/ui"
-import type { Component, Head, View } from "@effect/ui"
-import type { EventPayload, WindowOptions } from "@gpuix/native"
+import type { Head, Renderer, View } from "@effect/ui"
+import { Ui } from "@folio/effect-ui-universal"
+import type { EventPayload } from "@gpuix/native"
 import {
   createMutationQueue,
   createRendererState,
@@ -9,11 +9,7 @@ import {
   type NativeRenderer,
   type StyleDesc
 } from "@gpuix/native/host"
-import { createNativeRenderer, startFrameLoop } from "@gpuix/native/runtime"
-import * as Context from "effect/Context"
-import * as Effect from "effect/Effect"
-import * as Layer from "effect/Layer"
-import type * as Scope from "effect/Scope"
+import type * as Context from "effect/Context"
 import * as Gpui from "./Gpui.ts"
 import {
   CUSTOM_PROP_KEYS,
@@ -21,6 +17,7 @@ import {
   extractInheritedText,
   isScrollableStyle,
   nativeTypeOf,
+  normalizeGpuiStyle,
   toPayload
 } from "./events.ts"
 
@@ -34,6 +31,7 @@ export interface GpuiNode extends Gpui.GpuiNodeHandle {
   readonly children: Array<GpuiNode>
   text: string
   ownStyle: StyleDesc | undefined
+  rawStyle: Record<string, unknown> | undefined
   hoverStyle: Omit<StyleDesc, "hover" | "active"> | undefined
   activeStyle: Omit<StyleDesc, "hover" | "active"> | undefined
   inheritedText: Record<string, unknown>
@@ -45,6 +43,8 @@ export interface GpuiNode extends Gpui.GpuiNodeHandle {
   lastNativeValue: string | undefined
   lastSentValue: string | undefined
   isInteractive: boolean
+  disabled: boolean
+  horizontal: boolean
   detached: boolean
 }
 
@@ -93,7 +93,8 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       parent: undefined,
       children: [],
       text,
-      ownStyle: undefined,
+      ownStyle: tag === "scroll" ? normalizeGpuiStyle(tag, undefined, false) : undefined,
+      rawStyle: undefined,
       hoverStyle: undefined,
       activeStyle: undefined,
       inheritedText: {},
@@ -105,6 +106,8 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       lastNativeValue: undefined,
       lastSentValue: undefined,
       isInteractive: tag === "button",
+      disabled: false,
+      horizontal: false,
       detached: false
     }
     nodes.set(id, node)
@@ -132,12 +135,28 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       mutations.setEventListener(node.id, eventType, true)
       registerEventHandler(eventHandlers, node.id, eventType, (rawEvent) => {
         if (node.detached || node.dispatch === undefined) return
+        if (eventType === "click") {
+          if (node.disabled) return
+          const pressHandler = node.handlers["press"]
+          if (pressHandler !== undefined) {
+            node.dispatch("press", pressHandler, {})
+          }
+          const clickHandler = node.handlers["click"]
+          if (clickHandler !== undefined) {
+            node.dispatch("click", clickHandler, toPayload("click", rawEvent))
+          }
+          return
+        }
         if (eventType === "change") {
           const clean =
             node.lastSentValue?.endsWith(NUDGE) && rawEvent.value !== undefined
               ? rawEvent.value.replace(NUDGE, "")
               : rawEvent.value ?? ""
           node.lastNativeValue = clean
+          const changeTextHandler = node.handlers["changeText"]
+          if (changeTextHandler !== undefined) {
+            node.dispatch("changeText", changeTextHandler, { text: clean })
+          }
           const handler = node.handlers["change"]
           if (handler !== undefined) {
             node.dispatch("change", handler, toPayload("change", rawEvent, clean))
@@ -151,7 +170,10 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
               : rawEvent.value ?? node.lastNativeValue ?? ""
           const handler = node.handlers["submit"]
           if (handler !== undefined) {
-            node.dispatch("submit", handler, toPayload("submit", rawEvent, clean))
+            node.dispatch("submit", handler, {
+              ...(toPayload("submit", rawEvent, clean) as Record<string, unknown>),
+              text: clean
+            })
           }
           return
         }
@@ -293,6 +315,7 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
         children: [],
         text,
         ownStyle: undefined,
+        rawStyle: undefined,
         hoverStyle: undefined,
         activeStyle: undefined,
         inheritedText: {},
@@ -304,6 +327,8 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
         lastNativeValue: undefined,
         lastSentValue: undefined,
         isInteractive: false,
+        disabled: false,
+        horizontal: false,
         detached: false
       }
     },
@@ -330,17 +355,34 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
 
     setProp(node, name, value) {
       if (name === "style") {
-        node.ownStyle = value as StyleDesc | undefined
+        node.rawStyle = value as Record<string, unknown> | undefined
+        node.ownStyle = normalizeGpuiStyle(node.tag, node.rawStyle, node.horizontal)
         dirtyStyleNodes.add(node)
         return
       }
+      if (name === "horizontal") {
+        node.horizontal = Boolean(value)
+        node.ownStyle = normalizeGpuiStyle(node.tag, node.rawStyle, node.horizontal)
+        dirtyStyleNodes.add(node)
+        return
+      }
+      if (name === "disabled") {
+        node.disabled = Boolean(value)
+        return
+      }
       if (name === "hoverStyle") {
-        node.hoverStyle = value as Omit<StyleDesc, "hover" | "active"> | undefined
+        node.hoverStyle = normalizeGpuiStyle(
+          "hover",
+          value as Record<string, unknown> | undefined
+        ) as Omit<StyleDesc, "hover" | "active"> | undefined
         dirtyStyleNodes.add(node)
         return
       }
       if (name === "activeStyle") {
-        node.activeStyle = value as Omit<StyleDesc, "hover" | "active"> | undefined
+        node.activeStyle = normalizeGpuiStyle(
+          "active",
+          value as Record<string, unknown> | undefined
+        ) as Omit<StyleDesc, "hover" | "active"> | undefined
         dirtyStyleNodes.add(node)
         return
       }
@@ -433,7 +475,12 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       node.handlers = handlers
       node.dispatch = dispatch
       const hadInteractive = node.isInteractive
-      const wanted = new Set(Object.keys(handlers))
+      const wanted = new Set<string>()
+      for (const key of Object.keys(handlers)) {
+        if (key === "press") wanted.add("click")
+        else if (key === "changeText") wanted.add("change")
+        else wanted.add(key)
+      }
       if (node.nativeType === "input") {
         wanted.add("change")
         wanted.add("submit")
@@ -462,7 +509,7 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       }
     },
 
-    elements: [Gpui.name],
+    elements: [Gpui.name, Ui.name],
     controlled: CONTROLLED_PROPS,
     runsMounts: true,
 
@@ -517,94 +564,4 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
   }
 }
 
-export const layer = (
-  renderer: NativeRenderer
-): Layer.Layer<Renderer.Renderer | Gpui.Host> =>
-  Layer.effectContext(
-    Effect.gen(function* () {
-      const handle = makeHost(renderer)
-      yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
-      return Context.make(Renderer.Renderer, { host: handle.host }).pipe(
-        Context.add(Gpui.Host, handle.service)
-      )
-    })
-  )
-
-export const mount = <
-  Name extends string,
-  Props,
-  Model,
-  Msg,
-  Events,
-  R,
-  V extends View.Elements,
-  RP = never
->(
-  component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
-  props: Props | Effect.Effect<Props, never, RP>,
-  renderer: NativeRenderer
-): Effect.Effect<
-  Renderer.Root<Model, Msg> & { readonly flush: () => void },
-  never,
-  Exclude<R | RP, Gpui.Host | Renderer.Renderer> | Scope.Scope
-> =>
-  Effect.gen(function* () {
-    const handle = makeHost(renderer)
-    yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
-    const ctx = Context.make(Renderer.Renderer, { host: handle.host }).pipe(
-      Context.add(Gpui.Host, handle.service)
-    )
-    const root = yield* (Renderer.mount(
-      component as any,
-      props as any,
-      handle.rootContainer
-    ) as Effect.Effect<Renderer.Root<Model, Msg>, never, any>).pipe(
-      Effect.provideContext(ctx)
-    )
-    handle.flush()
-    return { ...root, flush: handle.flush }
-  }) as any
-
-export const run = <
-  Name extends string,
-  Props,
-  Model,
-  Msg,
-  Events,
-  R,
-  V extends View.Elements,
-  RP = never
->(
-  component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
-  props: Props | Effect.Effect<Props, never, RP>,
-  windowOptions: WindowOptions
-): Effect.Effect<void, never, Exclude<R | RP, Gpui.Host | Renderer.Renderer>> =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const renderer = createNativeRenderer({
-        onError: (err) => {
-          console.error("[effect-ui-gpui]", err)
-        }
-      })
-      renderer.init(windowOptions)
-      yield* mount(component, props, renderer)
-
-      yield* Effect.callback<void>((resume) => {
-        const frameLoop = startFrameLoop(renderer, {
-          onTerminated: () => resume(Effect.void),
-          onError: (err) => console.error("[effect-ui-gpui frame]", err)
-        })
-        const onSignal = () => {
-          frameLoop.stop()
-          resume(Effect.void)
-        }
-        process.once("SIGINT", onSignal)
-        process.once("SIGTERM", onSignal)
-        return Effect.sync(() => {
-          frameLoop.stop()
-          process.off("SIGINT", onSignal)
-          process.off("SIGTERM", onSignal)
-        })
-      })
-    })
-  ) as any
+export { layer, mount, run } from "./mount.ts"

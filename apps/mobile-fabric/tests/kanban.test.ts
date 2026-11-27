@@ -1,15 +1,21 @@
 import { FabricHost } from "@folio/effect-ui-fabric"
 import { attachStyles } from "@folio/effect-ui-fabric/css"
+import { appState } from "@folio/effect-ui-fabric/subscription"
 import {
   createFakeFabric,
   fakeAppState,
   manualFrames,
   type FakeFabricNode
 } from "@folio/effect-ui-fabric/testing"
+import {
+  FolioApp,
+  makeAppLayer,
+  makeLifecycleLayer,
+  mobileAppProps
+} from "@folio/folio-app"
 import { Engine } from "@ng-native/fabric"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import tailwind from "../.tailwind/app.tailwind.js"
-import { KanbanMobile } from "../src/components/KanbanMobile"
 
 beforeEach(() => {
   fakeAppState.set("active")
@@ -48,9 +54,10 @@ const setup = () => {
   })
   attachStyles(engine, { platform: "ios", conditions })
   const frames = manualFrames()
-  const app = FabricHost.mountApp(KanbanMobile, {}, engine, {
+  const app = FabricHost.mountApp(FolioApp, mobileAppProps(), engine, {
     platform: "ios",
-    requestAnimationFrame: frames.requestAnimationFrame
+    requestAnimationFrame: frames.requestAnimationFrame,
+    layer: makeAppLayer({ lifecycle: makeLifecycleLayer(appState) })
   })
 
   const settle = async (isSettled: () => boolean): Promise<number> => {
@@ -103,8 +110,8 @@ const setup = () => {
   return { fabric, app, settle, byTestID, tap, typeIn, hasText }
 }
 
-describe("Folio Kanban Mobile (@effect/ui + React Native Fabric)", () => {
-  it("mounts native Fabric views, switches lanes in 1 commit, and moves a card", async () => {
+describe("Folio Kanban Mobile (Unified @folio/folio-app on React Native Fabric)", () => {
+  it("mounts unified FolioApp onto native Fabric views, switches lanes in 1 commit, and moves a card", async () => {
     const { fabric, app, settle, byTestID, tap, hasText } = setup()
 
     await settle(hasText("Share pure TEA domain across Web, Desktop GPU & Mobile"))
@@ -128,7 +135,7 @@ describe("Folio Kanban Mobile (@effect/ui + React Native Fabric)", () => {
     await settle(() => byTestID("card.card-101") !== undefined)
     expect(fabric.render()).toContain('RawText "FOL-101"')
 
-    // Undo restores FOL-101 back to In Progress via @ui-sdk/core createUndoStack
+    // Undo restores FOL-101 back to In Progress
     tap("board.undo")
     await settle(hasText("Undid last change."))
     tap("lane.tab.in_progress")
@@ -149,33 +156,35 @@ describe("Folio Kanban Mobile (@effect/ui + React Native Fabric)", () => {
     await settle(hasText("Ship @effect/ui on Fabric"))
     expect(byTestID("quick.input")?.props["text"]).toBe("")
 
-    // Filter down to the newly created card
+    // Filter down to the newly created card (title splits into inline VirtualText highlight segments)
     typeIn("board.search", "Fabric", 1)
     await settle(() => byTestID("card.card-101") === undefined)
-    expect(hasText("Ship @effect/ui on Fabric")()).toBe(true)
+    expect(byTestID("card.mobile-card-1")).toBeDefined()
+    expect(hasText("Ship @effect/ui on ")()).toBe(true)
+    expect(hasText("Fabric")()).toBe(true)
     app.dispose()
   })
 
-  it("opens Card Detail, edits title via controlled TextInput, and saves back to Board", async () => {
+  it("opens full-screen Card Editor, edits title via controlled TextInput, and saves back to Board", async () => {
     const { app, settle, byTestID, tap, typeIn, hasText } = setup()
 
     await settle(() => byTestID("card.open.card-101") !== undefined)
     tap("card.open.card-101")
-    await settle(() => byTestID("detail.title") !== undefined)
+    await settle(() => byTestID("editor.title") !== undefined)
 
-    typeIn("detail.title", "Effect UI Fabric verified", 1)
+    typeIn("editor.title", "Effect UI Fabric verified", 1)
     await settle(
-      () => byTestID("detail.title")?.props["text"] === "Effect UI Fabric verified"
+      () => byTestID("editor.title")?.props["text"] === "Effect UI Fabric verified"
     )
 
-    tap("detail.lane.done")
-    tap("detail.save")
+    tap("editor.lane.done")
+    tap("editor.save")
     await settle(hasText("Saved FOL-101."))
     expect(hasText("Effect UI Fabric verified")()).toBe(true)
     app.dispose()
   })
 
-  it("tracks native AppState background/foreground transitions via @effect/ui Subscription", async () => {
+  it("tracks native AppState background/foreground transitions via @folio/folio-app AppLifecycle", async () => {
     const { app, settle, hasText } = setup()
 
     await settle(hasText("@effect/ui · active"))

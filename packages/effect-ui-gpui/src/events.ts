@@ -25,6 +25,10 @@ export const CUSTOM_PROP_KEYS = new Set([
   "aria-id",
   "aria-expanded",
   "aria-selected",
+  "aria-checked",
+  "aria-valuenow",
+  "aria-valuemin",
+  "aria-valuemax",
   "aria-valuetext",
   "aria-level",
   "testId",
@@ -141,3 +145,60 @@ export const isScrollableStyle = (style: StyleDesc | undefined): boolean =>
     style.overflowY === "auto" ||
     style.overflowX === "scroll" ||
     style.overflowX === "auto")
+
+export const normalizeGpuiStyle = (
+  tag: string,
+  raw: Record<string, unknown> | undefined,
+  horizontal = false
+): StyleDesc | undefined => {
+  if (raw === undefined && tag !== "scroll") return undefined
+  const out: Record<string, unknown> = {}
+
+  if (tag === "box" || tag === "scroll" || tag === "button") {
+    out["display"] = "flex"
+    if (tag === "box" || tag === "scroll") {
+      out["flexDirection"] = "column"
+    }
+  }
+  if (tag === "scroll") {
+    if (horizontal) {
+      out["overflowX"] = "scroll"
+    } else {
+      out["overflowY"] = "scroll"
+    }
+  }
+
+  if (raw !== undefined) {
+    for (const [key, value] of Object.entries(raw)) {
+      if (value === undefined) continue
+      if (key === "paddingHorizontal") {
+        out["paddingLeft"] = value
+        out["paddingRight"] = value
+      } else if (key === "paddingVertical") {
+        out["paddingTop"] = value
+        out["paddingBottom"] = value
+      } else if (key === "marginHorizontal") {
+        out["marginLeft"] = value
+        out["marginRight"] = value
+      } else if (key === "marginVertical") {
+        out["marginTop"] = value
+        out["marginBottom"] = value
+      } else if (key === "flex" && typeof value === "number") {
+        out["flexGrow"] = value
+        out["flexShrink"] = 1
+        out["flexBasis"] = 0
+      } else if (key === "fontWeight" && typeof value === "string") {
+        const parsed = Number(value)
+        out["fontWeight"] = Number.isFinite(parsed) ? parsed : value
+      } else if (key === "borderBottomColor" || key === "borderTopColor") {
+        if (out["borderColor"] === undefined) {
+          out["borderColor"] = value
+        }
+      } else {
+        out[key] = value
+      }
+    }
+  }
+
+  return out as StyleDesc
+}

@@ -1,246 +1,255 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { Router } from "@effect/ui"
-import { HtmlLocator, HtmlScene } from "@effect/ui/html/testing"
-import { Story, TestHost } from "@effect/ui/testing"
-import { Effect, Layer } from "effect"
-import { App, AppMessage } from "../src/App.ts"
+import * as WebHost from "@folio/effect-ui-universal/web"
 import {
-  KanbanCard,
-  KanbanCardEvents
-} from "../src/components/KanbanCard.ts"
-import {
-  BoardPageMessage,
-  BoardPageNoDeps,
-  MoveCard,
-  QuickCreateCard
-} from "../src/pages/BoardPage.ts"
-import {
-  CreateTask,
-  NewTaskMessage,
-  NewTaskPageNoDeps
-} from "../src/pages/new/NewTaskPage.ts"
-import {
-  CardEditorEvents,
-  CardEditorMessage,
-  CardEditorNoDeps,
-  DeleteDetailCard,
-  SaveCard
-} from "../src/pages/tasks/TaskDetailPage.ts"
-import { AppRoute } from "../src/routes.ts"
-import { defaultSeedTasks, TaskStore } from "../src/services/TaskStore.ts"
-import { TraceBus } from "../src/services/TraceBus.ts"
+  FolioApp,
+  makeAppLayer,
+  makeMemoryStorageLayer,
+  webAppProps
+} from "@folio/folio-app"
+import { canRedoHistory, canUndoHistory, cardsInLane } from "@folio/kanban-core"
+import { Effect } from "effect"
 
-const runEffect = <A, E>(effect: Effect.Effect<A, E>) =>
-  Effect.runPromise(effect)
+interface FakeNode {
+  readonly nodeType: number
+  readonly tagName: string
+  readonly ownerDocument: FakeDocument
+  parentNode: FakeNode | null
+  readonly childNodes: Array<FakeNode>
+  nodeValue: string | null
+  value: string
+  disabled: boolean
+  isConnected: boolean
+  readonly style: Record<string, string>
+  readonly attrs: Map<string, string>
+  readonly listeners: Map<string, Set<(event: any) => void>>
+  readonly nextSibling: FakeNode | null
+  setAttribute(name: string, value: string): void
+  getAttribute(name: string): string | null
+  removeAttribute(name: string): void
+  insertBefore(child: FakeNode, ref: FakeNode | null): FakeNode
+  removeChild(child: FakeNode): FakeNode
+  addEventListener(type: string, listener: (event: any) => void): void
+  removeEventListener(type: string, listener: (event: any) => void): void
+  dispatch(type: string, event?: Record<string, unknown>): void
+  focus(): void
+}
 
-describe("Folio Kanban (@effect/ui)", () => {
-  it("KanbanCard emits RequestedMove when clicking the right-lane button", async () => {
-    const sample = defaultSeedTasks[0]! // in_progress -> review
-    await runEffect(
+interface FakeDocument {
+  title: string
+  createElement(tag: string): FakeNode
+  createTextNode(text: string): FakeNode
+  createDocumentFragment(): FakeNode
+}
+
+const createFakeDom = (): {
+  readonly doc: FakeDocument
+  readonly container: FakeNode
+  readonly findByTestId: (id: string) => FakeNode | undefined
+  readonly findByRole: (role: string, name?: string) => FakeNode | undefined
+  readonly textContent: (node?: FakeNode) => string
+} => {
+  const makeNode = (nodeType: number, tagName: string, text = ""): FakeNode => {
+    const node: FakeNode = {
+      nodeType,
+      tagName,
+      ownerDocument: doc,
+      parentNode: null,
+      childNodes: [],
+      nodeValue: nodeType === 3 ? text : null,
+      value: "",
+      disabled: false,
+      isConnected: true,
+      style: {},
+      attrs: new Map(),
+      listeners: new Map(),
+      get nextSibling(): FakeNode | null {
+        if (node.parentNode === null) return null
+        const idx = node.parentNode.childNodes.indexOf(node)
+        return idx >= 0 ? (node.parentNode.childNodes[idx + 1] ?? null) : null
+      },
+      setAttribute(name, value) {
+        node.attrs.set(name, value)
+      },
+      getAttribute(name) {
+        return node.attrs.get(name) ?? null
+      },
+      removeAttribute(name) {
+        node.attrs.delete(name)
+      },
+      insertBefore(child, ref) {
+        if (child.parentNode !== null) {
+          const prev = child.parentNode.childNodes.indexOf(child)
+          if (prev >= 0) child.parentNode.childNodes.splice(prev, 1)
+        }
+        child.parentNode = node
+        if (ref === null) {
+          node.childNodes.push(child)
+        } else {
+          const idx = node.childNodes.indexOf(ref)
+          if (idx >= 0) node.childNodes.splice(idx, 0, child)
+          else node.childNodes.push(child)
+        }
+        return child
+      },
+      removeChild(child) {
+        const idx = node.childNodes.indexOf(child)
+        if (idx >= 0) node.childNodes.splice(idx, 1)
+        child.parentNode = null
+        return child
+      },
+      addEventListener(type, listener) {
+        let set = node.listeners.get(type)
+        if (set === undefined) {
+          set = new Set()
+          node.listeners.set(type, set)
+        }
+        set.add(listener)
+      },
+      removeEventListener(type, listener) {
+        node.listeners.get(type)?.delete(listener)
+      },
+      dispatch(type, event = {}) {
+        const set = node.listeners.get(type)
+        if (set === undefined) return
+        for (const fn of [...set]) {
+          fn({ preventDefault: () => {}, ...event })
+        }
+      },
+      focus() {}
+    }
+    return node
+  }
+
+  const doc: FakeDocument = {
+    title: "",
+    createElement: (tag) => makeNode(1, tag.toUpperCase()),
+    createTextNode: (text) => makeNode(3, "#text", text),
+    createDocumentFragment: () => makeNode(11, "#fragment")
+  }
+
+  const container = doc.createElement("div")
+
+  const walk = (
+    node: FakeNode,
+    predicate: (candidate: FakeNode) => boolean
+  ): FakeNode | undefined => {
+    if (predicate(node)) return node
+    for (const child of node.childNodes) {
+      const hit = walk(child, predicate)
+      if (hit !== undefined) return hit
+    }
+    return undefined
+  }
+
+  const textContent = (node: FakeNode = container): string => {
+    if (node.nodeType === 3) return node.nodeValue ?? ""
+    return node.childNodes.map((child) => textContent(child)).join("")
+  }
+
+  return {
+    doc,
+    container,
+    findByTestId: (id) =>
+      walk(container, (n) => n.getAttribute("data-testid") === id),
+    findByRole: (role, name) =>
+      walk(
+        container,
+        (n) =>
+          n.getAttribute("role") === role &&
+          (name === undefined || n.getAttribute("aria-label") === name)
+      ),
+    textContent
+  }
+}
+
+const tick = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 15))
+
+const waitFor = async (predicate: () => boolean, timeoutMs = 500): Promise<void> => {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate()) {
+    if (Date.now() >= deadline) break
+    await tick()
+  }
+}
+
+describe("Folio Kanban Web (Unified @folio/folio-app on WebHost DOM)", () => {
+  it("mounts FolioApp onto DOM, syncs document.title, exposes UI SDK ARIA, and handles full board lifecycle", async () => {
+    const dom = createFakeDom()
+    const storage = makeMemoryStorageLayer()
+
+    await Effect.runPromise(
       Effect.scoped(
-        Effect.gen(function*() {
-          const s = yield* HtmlScene.make(KanbanCard, {
-            task: sample,
-            compact: false,
-            busy: false
-          })
-          s.click(
-            HtmlLocator.role("button", {
-              name: `Move ${sample.title} to In Review`
-            })
-          ).emitted(
-            KanbanCardEvents.RequestedMove({
-              id: sample.id,
-              column: "review"
-            })
+        Effect.gen(function* () {
+          const root = yield* WebHost.mountEffect(
+            FolioApp,
+            webAppProps(),
+            dom.container as unknown as Element
           )
+
+          assert.ok(dom.doc.title.includes("Web · DOM Host"))
+          assert.ok(dom.doc.title.includes("8 cards"))
+          assert.ok(dom.textContent().includes("Folio Kanban"))
+          assert.ok(
+            dom.findByRole("radiogroup", "Filter by priority") !== undefined
+          )
+          assert.ok(
+            dom.findByRole("progressbar", "Sprint velocity") !== undefined
+          )
+          assert.ok(
+            dom.findByRole("region", "Folio Kanban board") !== undefined
+          )
+
+          // Move FOL-101 from In Progress to In Review via DOM click
+          const moveBtn = dom.findByTestId("card.next.card-101")
+          assert.ok(moveBtn)
+          moveBtn.dispatch("click")
+          yield* Effect.promise(() =>
+            waitFor(() => storage.getSaved() !== undefined)
+          )
+          assert.equal(cardsInLane(root.model()!.cards, "review")[0]?.id, "card-101")
+
+          // Toggle Paper -> Graphite theme
+          const themeBtn = dom.findByTestId("theme.toggle")
+          assert.ok(themeBtn)
+          themeBtn.dispatch("click")
+          yield* Effect.promise(() =>
+            waitFor(() => storage.getSaved()?.theme === "graphite")
+          )
+          assert.equal(root.model()!.theme, "graphite")
+
+          // Open MVU Trace inspector
+          const inspectorBtn = dom.findByTestId("board.inspector")
+          assert.ok(inspectorBtn)
+          inspectorBtn.dispatch("click")
+          yield* Effect.promise(tick)
+          assert.ok(dom.findByTestId("inspector.panel") !== undefined)
+
+          // Quick-add a card via DOM input + Enter submit
+          dom.findByTestId("lane.add.backlog")!.dispatch("click")
+          yield* Effect.promise(tick)
+          const quickInput = dom.findByTestId("quick.input")!
+          quickInput.value = "Ship unified Web DOM host"
+          quickInput.dispatch("input")
+          yield* Effect.promise(tick)
+          quickInput.dispatch("keydown", { key: "Enter" })
+          yield* Effect.promise(tick)
+
+          assert.equal(root.model()!.cards.length, 9)
+          assert.ok(dom.doc.title.includes("9 cards"))
+
+          // Undo & Redo
+          assert.equal(canUndoHistory(root.model()!.history), true)
+          dom.findByTestId("board.undo")!.dispatch("click")
+          yield* Effect.promise(tick)
+          assert.equal(root.model()!.cards.length, 8)
+          assert.equal(canRedoHistory(root.model()!.history), true)
+          dom.findByTestId("board.redo")!.dispatch("click")
+          yield* Effect.promise(tick)
+          assert.equal(root.model()!.cards.length, 9)
         })
-      )
-    )
-  })
-
-  it("BoardPage Story: dropping a card issues MoveCard Command and updates notice", async () => {
-    await runEffect(
-      Effect.scoped(
-        Effect.gen(function*() {
-          const s = yield* Story.make(BoardPageNoDeps, {
-            route: AppRoute.Board()
-          })
-          s.loaded("tasks", [...defaultSeedTasks])
-          s.send(BoardPageMessage.DraggedIntoColumn({ column: "review" }))
-          assert.equal(s.model.dropOver, "review")
-
-          s.send(
-            BoardPageMessage.DroppedCardInColumn({
-              id: "card-101",
-              column: "review"
-            })
-          ).expectExact(MoveCard)
-
-          assert.equal(s.model.dropOver, null)
-          assert.equal(s.model.busyCardId, "card-101")
-
-          s.resolve(
-            MoveCard,
-            BoardPageMessage.SucceededMoveCard({
-              id: "card-101",
-              column: "review"
-            })
-          )
-          assert.equal(s.model.busyCardId, null)
-          assert.equal(s.model.notice?.text, "Moved card to In Review.")
-        })
-      )
-    )
-  })
-
-  it("BoardPage Story: inline Quick Add validates length and dispatches QuickCreateCard", async () => {
-    await runEffect(
-      Effect.scoped(
-        Effect.gen(function*() {
-          const s = yield* Story.make(BoardPageNoDeps, {
-            route: AppRoute.Board()
-          })
-          s.loaded("tasks", [...defaultSeedTasks])
-          s.send(BoardPageMessage.ClickedOpenComposer({ column: "backlog" }))
-          s.send(BoardPageMessage.TypedComposerTitle({ text: "Hi" }))
-          s.send(BoardPageMessage.SubmittedComposer())
-          assert.equal(s.model.notice?.tone, "error")
-
-          s.send(
-            BoardPageMessage.TypedComposerTitle({
-              text: "Ship Kanban board"
-            })
-          )
-          s.send(BoardPageMessage.SubmittedComposer()).expectExact(
-            QuickCreateCard
-          )
-          s.resolve(
-            QuickCreateCard,
-            BoardPageMessage.SucceededQuickCreate({
-              title: "Ship Kanban board",
-              column: "backlog"
-            })
-          )
-          assert.equal(s.model.composingColumn, null)
-          assert.equal(
-            s.model.notice?.text,
-            'Added "Ship Kanban board" to Backlog.'
-          )
-        })
-      )
-    )
-  })
-
-  it("NewTaskPage Scene: validates required title before running CreateTask", async () => {
-    await runEffect(
-      Effect.scoped(
-        Effect.gen(function*() {
-          const s = yield* HtmlScene.make(NewTaskPageNoDeps, {
-            route: AppRoute.NewTask({ search: { column: "in_progress" } })
-          })
-          s.click(HtmlLocator.role("button", { name: "Create card" }))
-            .expect(HtmlLocator.role("alert"))
-            .toHaveText("Give this card a concise title")
-            .type(HtmlLocator.label("Card title *"), "Build Effect UI Kanban")
-            .click(HtmlLocator.role("button", { name: "Create card" }))
-            .expectExact(CreateTask)
-            .resolve(
-              CreateTask,
-              NewTaskMessage.FailedCreateTask({
-                reason: "Duplicate title"
-              })
-            )
-            .expect(HtmlLocator.role("alert"))
-            .toHaveText("Duplicate title")
-        })
-      )
-    )
-  })
-
-  it("CardEditor Story: tracks debounced autosave subscription, saves, and confirms delete", async () => {
-    const sample = defaultSeedTasks[0]!
-    const edited = { ...sample, title: "Updated Kanban card title" }
-
-    await runEffect(
-      Effect.scoped(
-        Effect.gen(function*() {
-          const s = yield* Story.make(CardEditorNoDeps, { task: sample })
-          assert.deepEqual(s.subscriptions, [])
-
-          s.send(CardEditorMessage.UpdatedTitle({ title: edited.title }))
-          assert.deepEqual(s.subscriptions, ["autosave-card:1"])
-
-          s.send(CardEditorMessage.RequestedSave()).expectExact(SaveCard)
-          s.resolve(SaveCard, CardEditorMessage.SucceededSaveCard({ task: edited }))
-          assert.equal(s.model.saved.title, edited.title)
-          assert.deepEqual(s.subscriptions, [])
-
-          s.send(CardEditorMessage.ClickedRequestDelete())
-          assert.equal(s.model.confirmDelete, true)
-
-          s.send(CardEditorMessage.ConfirmedDeleteCard()).expectExact(
-            DeleteDetailCard
-          )
-          s.resolve(DeleteDetailCard, CardEditorMessage.SucceededDeleteCard())
-          s.emitted(CardEditorEvents.Deleted())
-        })
-      )
-    )
-  })
-
-  it("BoardPage Scene: renders UI SDK radiogroup, progressbar, and fuzzy highlights", async () => {
-    await runEffect(
-      Effect.scoped(
-        Effect.gen(function*() {
-          const s = yield* HtmlScene.make(BoardPageNoDeps, {
-            route: AppRoute.Board({ search: { priority: "high", q: "TEA" } })
-          })
-          s.loaded("tasks", [...defaultSeedTasks])
-            .expect(
-              HtmlLocator.role("radiogroup", { name: "Filter by priority" })
-            )
-            .toExist()
-            .expect(HtmlLocator.role("radio", { name: "High" }))
-            .toBeChecked(true)
-            .expect(HtmlLocator.role("radio", { name: "Low" }))
-            .toBeChecked(false)
-            .expect(HtmlLocator.role("progressbar", { name: "Sprint velocity" }))
-            .toExist()
-        })
-      )
-    )
-  })
-
-  it("Full App TestHost: mounts Board, loads TaskStore Query, toggles MVU Trace drawer, and navigates to /new", async () => {
-    const { busLayer, messageLogLayer } = TraceBus.makeLive()
-    await runEffect(
-      Effect.gen(function*() {
-        const root = yield* TestHost.mount(App, Router.props(AppRoute))
-        yield* TestHost.settle
-        assert.equal(root.model()?.route._tag, "Board")
-        assert.equal(root.model()?.inspectorOpen, false)
-
-        root.send(AppMessage.ClickedToggleInspector())
-        yield* TestHost.settle
-        assert.equal(root.model()?.inspectorOpen, true)
-
-        root.send(AppMessage.PressedNewCardShortcut())
-        yield* TestHost.settle
-        assert.equal(root.model()?.route._tag, "NewTask")
-      }).pipe(
-        Effect.scoped,
-        Effect.provide(
-          Layer.mergeAll(
-            TestHost.layer(),
-            Router.memory({ routes: AppRoute, url: "/" }),
-            TaskStore.layerMemory(),
-            busLayer,
-            messageLogLayer
-          )
-        )
-      )
+      ).pipe(Effect.provide(makeAppLayer({ storage: storage.layer })))
     )
   })
 })

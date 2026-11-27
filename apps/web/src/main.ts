@@ -1,25 +1,33 @@
 import "./styles.css"
-import { TaskStore } from "#services/TaskStore"
-import { TraceBus } from "#services/TraceBus"
-import { Router } from "@effect/ui"
-import { BrowserHost, BrowserRouter } from "@effect/ui/html"
+import * as WebHost from "@folio/effect-ui-universal/web"
+import {
+  FolioApp,
+  loadInitialBoard,
+  makeAppLayer,
+  webAppProps
+} from "@folio/folio-app"
 import { Effect, Layer } from "effect"
-import { App } from "./App.ts"
-import { AppRoute } from "./routes.ts"
+import { browserLifecycleLayer, browserStorageLayer } from "./storage.ts"
 
-const { busLayer, messageLogLayer } = TraceBus.makeLive()
+const initialProps = Effect.map(loadInitialBoard, (saved) => ({
+  ...webAppProps(saved),
+  layout:
+    typeof window !== "undefined" && window.innerWidth < 820
+      ? ("tabs" as const)
+      : ("columns" as const)
+}))
 
-const Main = BrowserHost.mount(
-  App,
-  Router.props(AppRoute),
+const Main = WebHost.mount(
+  FolioApp,
+  initialProps,
   document.getElementById("app")!
 ).pipe(
-  Layer.provide([
-    BrowserRouter.layerHash({ routes: AppRoute }),
-    TaskStore.layerBrowser,
-    busLayer,
-    messageLogLayer
-  ])
+  Layer.provide(
+    makeAppLayer({
+      storage: browserStorageLayer,
+      lifecycle: browserLifecycleLayer
+    })
+  )
 )
 
 Layer.launch(Main).pipe(Effect.runFork)

@@ -10,7 +10,11 @@
     "./register": "./src/register.ts",
     "./testing": "./src/testing/index.ts"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
+    "@folio/effect-ui-universal": "*",
     "@ng-native/fabric": "0.3.0"
   },
   "peerDependencies": {
