@@ -78,6 +78,24 @@ describe("@universal-ui/behaviors", () => {
     assert.equal(fuzzy.map((seg) => seg.text).join(""), "Implement GPUI Renderer")
   })
 
+  it("handles React Native style window globals without addEventListener", () => {
+    const g = globalThis as { window?: Record<string, unknown> | undefined }
+    const hadWindow = "window" in g
+    const prevWindow = g.window
+    try {
+      g.window = {}
+      const result = highlightText("Deliver Mobile Fabric", "Fabric")
+      assert.deepEqual(result, [
+        { text: "Deliver Mobile ", match: false },
+        { text: "Fabric", match: true }
+      ])
+      assert.equal(typeof g.window["addEventListener"], "function")
+    } finally {
+      if (hadWindow) g.window = prevWindow
+      else delete g.window
+    }
+  })
+
   it("provides generic undo/redo history and transfer announcements", () => {
     const history = createHistoryStack(["a"])
     assert.equal(history.canUndo(), false)

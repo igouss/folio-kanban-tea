@@ -1,12 +1,44 @@
 import {
-  fuzzyScore,
-  matchRanges,
+  fuzzyScore as sdkFuzzyScore,
+  matchRanges as sdkMatchRanges,
   matchSegments,
   type MatchRange,
   type MatchSegment
 } from "@ui-sdk/core/text-match"
 
-export { fuzzyScore, matchRanges, matchSegments, type MatchRange, type MatchSegment }
+/**
+ * React Native aliases `window = globalThis` without implementing
+ * `EventTarget` methods (`addEventListener`/`removeEventListener`).
+ * `@ui-sdk/core/text-match` registers a `"languagechange"` listener whenever
+ * `typeof window !== "undefined"`, so ensure a safe no-op exists on non-DOM
+ * `window` objects before delegating.
+ */
+const ensureWindowListenerTarget = (): void => {
+  const g = globalThis as {
+    window?: {
+      addEventListener?: unknown
+      removeEventListener?: unknown
+    }
+  }
+  if (g.window !== undefined && typeof g.window.addEventListener !== "function") {
+    g.window.addEventListener = () => {}
+    if (typeof g.window.removeEventListener !== "function") {
+      g.window.removeEventListener = () => {}
+    }
+  }
+}
+
+export const fuzzyScore = (text: string, query: string): number => {
+  ensureWindowListenerTarget()
+  return sdkFuzzyScore(text, query)
+}
+
+export const matchRanges: typeof sdkMatchRanges = (text, query, mode) => {
+  ensureWindowListenerTarget()
+  return sdkMatchRanges(text, query, mode)
+}
+
+export { matchSegments, type MatchRange, type MatchSegment }
 
 export const highlightText = (
   text: string,
