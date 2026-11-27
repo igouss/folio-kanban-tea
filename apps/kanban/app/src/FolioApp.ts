@@ -1,4 +1,4 @@
-import { Head, Subscription, UiSchema } from "@effect/ui"
+import { Command, Head, Subscription, UiSchema } from "@effect/ui"
 import {
   DEFAULT_CARDS,
   applyDeleteCard,
@@ -13,7 +13,8 @@ import {
   redoHistory,
   themeLabel,
   toggleTheme,
-  undoHistory
+  undoHistory,
+  validateCardTitle
 } from "@folio/kanban-domain"
 import {
   BoardHistorySchema,
@@ -26,58 +27,51 @@ import {
   ThemeMode
 } from "@folio/kanban-domain/schema"
 import { formatTransferNotice } from "@universal-ui/behaviors"
-import { Lifecycle, LifecycleState, Ui } from "@universal-ui/core"
+import {
+  Lifecycle,
+  LifecycleState,
+  Ui,
+  Viewport,
+  ViewportMetricsSchema
+} from "@universal-ui/core"
+import { BoardRepository, loadInitialBoard } from "@folio/kanban-domain/ports"
 import { Effect, Option, Schema, Stream } from "effect"
-import { SaveBoard } from "./ports/index.ts"
+import { MintCardMeta, SaveBoard } from "./commands/index.ts"
 import { boardView } from "./views/BoardView.ts"
-
-export const FolioPlatform = Schema.Literals(["web", "desktop", "mobile"])
-export type FolioPlatform = typeof FolioPlatform.Type
-
-export const FolioLayout = Schema.Literals(["columns", "tabs"])
-export type FolioLayout = typeof FolioLayout.Type
 
 export const CardDensity = Schema.Literals(["comfortable", "compact"])
 export type CardDensity = typeof CardDensity.Type
 
 export const FolioAppProps = Schema.Struct({
-  platform: FolioPlatform,
+  runtimeTag: Schema.String,
   platformLabel: Schema.String,
-  layout: FolioLayout,
-  topInset: Schema.Number,
+  initialViewport: ViewportMetricsSchema,
   initialBoard: Schema.OptionFromUndefinedOr(SavedBoardSchema)
 })
 export type FolioAppProps = typeof FolioAppProps.Type
 
-export const webAppProps = (
-  initialBoard: Option.Option<typeof SavedBoardSchema.Type> = Option.none()
-): FolioAppProps => ({
-  platform: "web",
-  platformLabel: "Web · DOM Host",
-  layout: "columns",
-  topInset: 0,
-  initialBoard
-})
+export interface FolioBootstrapConfig {
+  readonly runtimeTag: string
+  readonly platformLabel: string
+}
 
-export const desktopAppProps = (
-  initialBoard: Option.Option<typeof SavedBoardSchema.Type> = Option.none()
-): FolioAppProps => ({
-  platform: "desktop",
-  platformLabel: "GPUI · Native GPU",
-  layout: "columns",
-  topInset: 0,
-  initialBoard
-})
-
-export const mobileAppProps = (
-  initialBoard: Option.Option<typeof SavedBoardSchema.Type> = Option.none()
-): FolioAppProps => ({
-  platform: "mobile",
-  platformLabel: "Fabric · Native Mobile",
-  layout: "tabs",
-  topInset: 56,
-  initialBoard
-})
+/**
+ * Loads initial FolioApp props from the platform-wired BoardRepository and Viewport ports.
+ */
+export const loadFolioProps = (
+  config: FolioBootstrapConfig
+): Effect.Effect<FolioAppProps, never, BoardRepository | Viewport> =>
+  Effect.gen(function* () {
+    const initialBoard = yield* loadInitialBoard
+    const viewport = yield* Viewport
+    const initialViewport = yield* viewport.current
+    return {
+      runtimeTag: config.runtimeTag,
+      platformLabel: config.platformLabel,
+      initialViewport,
+      initialBoard
+    }
+  })
 
 export const FolioAppModel = Schema.Struct({
   cards: Schema.Array(KanbanCardSchema),
@@ -92,13 +86,13 @@ export const FolioAppModel = Schema.Struct({
   editDraft: Schema.OptionFromNullOr(CardDraftSchema),
   notice: Schema.String,
   statusAnnouncement: Schema.String,
+  viewport: ViewportMetricsSchema,
   appState: LifecycleState,
   isBackgrounded: Schema.Boolean,
   backgroundTrips: Schema.Number,
   inspectorOpen: Schema.Boolean,
   traceEntries: Schema.Array(Schema.String),
-  dispatchCount: Schema.Number,
-  nextId: Schema.Number
+  dispatchCount: Schema.Number
 })
 export type FolioAppModel = typeof FolioAppModel.Type
 
@@ -114,6 +108,13 @@ export const FolioAppMessage = UiSchema.TaggedEnum({
   ClickedStartAddCard: { lane: LaneId },
   TypedQuickTitle: { text: Schema.String },
   SubmittedQuickCard: {},
+  CompletedMintCard: {
+    id: Schema.String,
+    createdAt: Schema.String,
+    title: Schema.String,
+    lane: LaneId,
+    tag: Schema.String
+  },
   CancelledQuickCard: {},
   ClickedMoveCard: { cardId: Schema.String, toLane: LaneId },
   ClickedDeleteCard: { cardId: Schema.String },
@@ -128,7 +129,8 @@ export const FolioAppMessage = UiSchema.TaggedEnum({
   CancelledEditCard: {},
   ClickedResetDemo: {},
   DismissedNotice: {},
-  ChangedLifecycle: { state: LifecycleState }
+  ChangedLifecycle: { state: LifecycleState },
+  ChangedViewport: { viewport: ViewportMetricsSchema }
 })
 export type FolioAppMessage = typeof FolioAppMessage.Type
 
@@ -164,13 +166,13 @@ export const FolioApp = Ui.component({
       editDraft: Option.none(),
       notice: "",
       statusAnnouncement: "",
+      viewport: props.initialViewport,
       appState: "active" as const,
       isBackgrounded: false,
       backgroundTrips: 0,
       inspectorOpen: false,
       traceEntries: [],
-      dispatchCount: 0,
-      nextId: 1
+      dispatchCount: 0
     }
   },
 
@@ -185,6 +187,18 @@ export const FolioApp = Ui.component({
         Effect.map(Lifecycle, (lifecycle) =>
           lifecycle.changes.pipe(
             Stream.map((state) => FolioAppMessage.ChangedLifecycle({ state }))
+          )
+        )
+      )
+    ),
+    Subscription.make(
+      "viewport",
+      Stream.unwrap(
+        Effect.map(Viewport, (viewport) =>
+          viewport.changes.pipe(
+            Stream.map((metrics) =>
+              FolioAppMessage.ChangedViewport({ viewport: metrics })
+            )
           )
         )
       )
@@ -307,11 +321,32 @@ export const FolioApp = Ui.component({
 
     SubmittedQuickCard: ($) => {
       const targetLane = Option.getOrElse($.model.composingLane, () => $.model.activeLane)
+      const check = validateCardTitle($.model.quickTitle, 2)
+      if (!check.ok) {
+        const nextCount = $.model.dispatchCount + 1
+        return $.evolve({
+          notice: check.error,
+          statusAnnouncement: check.error,
+          dispatchCount: nextCount,
+          traceEntries: appendTrace($.model.traceEntries, nextCount, "SubmittedQuickCard(invalid)")
+        })
+      }
+      return $.run(
+        MintCardMeta.make({
+          title: check.title,
+          lane: targetLane,
+          tag: $.props.runtimeTag
+        }).pipe(Command.map((meta) => FolioAppMessage.CompletedMintCard(meta)))
+      )
+    },
+
+    CompletedMintCard: ($, { id, createdAt, title, lane, tag }) => {
       const result = applyQuickCreate($.model, {
-        title: $.model.quickTitle,
-        lane: targetLane,
-        id: `${$.props.platform}-card-${$.model.nextId}`,
-        tag: $.props.platform
+        title,
+        lane,
+        id,
+        tag,
+        createdAt
       })
       const nextCount = $.model.dispatchCount + 1
       if (!result.ok) {
@@ -319,7 +354,7 @@ export const FolioApp = Ui.component({
           notice: result.error,
           statusAnnouncement: result.error,
           dispatchCount: nextCount,
-          traceEntries: appendTrace($.model.traceEntries, nextCount, "SubmittedQuickCard(invalid)")
+          traceEntries: appendTrace($.model.traceEntries, nextCount, "CompletedMintCard(invalid)")
         })
       }
       const message = `Added ${result.card.code} "${result.card.title}" to ${result.laneName}.`
@@ -328,14 +363,13 @@ export const FolioApp = Ui.component({
         history: result.history,
         composingLane: Option.none(),
         quickTitle: "",
-        nextId: (n) => n + 1,
         notice: message,
         statusAnnouncement: message,
         dispatchCount: nextCount,
         traceEntries: appendTrace(
           $.model.traceEntries,
           nextCount,
-          `SubmittedQuickCard(${result.card.code} -> ${targetLane})`
+          `CompletedMintCard(${result.card.code} -> ${lane})`
         )
       }).run(SaveBoard.make({ cards: result.cards, theme: $.model.theme }))
     },
@@ -522,7 +556,10 @@ export const FolioApp = Ui.component({
           ? $.model.backgroundTrips + 1
           : $.model.backgroundTrips
       })
-    }
+    },
+
+    ChangedViewport: ($, { viewport }) =>
+      $.evolve({ viewport })
   },
 
   view: (h, model) => boardView(h, model)

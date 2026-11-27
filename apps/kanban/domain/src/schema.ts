@@ -63,15 +63,3 @@ export const SavedBoardSchema = Schema.Struct({
 export type SavedBoardSchema = typeof SavedBoardSchema.Type
 
 export const SavedBoardJson = Schema.fromJsonString(SavedBoardSchema)
-
-export class CardNotFound
-  extends Schema.TaggedError<CardNotFound>()("TaskNotFound", {
-    id: Schema.String
-  })
-{}
-
-export class CardSaveError
-  extends Schema.TaggedError<CardSaveError>()("TaskSaveError", {
-    reason: Schema.String
-  })
-{}

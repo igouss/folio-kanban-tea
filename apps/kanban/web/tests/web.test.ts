@@ -2,14 +2,20 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import {
   FolioApp,
-  makeKanbanLayer,
-  makeMemoryBoardRepository,
-  webAppProps
+  kanbanCommandsLayer,
+  keyValueBoardRepositoryLayer,
+  loadFolioProps
 } from "@folio/kanban-app"
 import { canRedoHistory, canUndoHistory, cardsInLane } from "@folio/kanban-domain"
 import { WebHost } from "@universal-ui/host-web"
 import { createFakeDom } from "@universal-ui/host-web/testing"
-import { Effect } from "effect"
+import {
+  makeSequenceIdGeneratorLayer,
+  staticLifecycleLayer,
+  staticViewportLayer
+} from "@universal-ui/platform/memory"
+import { makeMemoryKeyValueStore } from "@universal-ui/storage/memory"
+import { Effect, Layer } from "effect"
 
 const tick = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 15))
@@ -23,16 +29,33 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 500): Promise<void>
 }
 
 describe("Folio Kanban Web (@folio/kanban-app on @universal-ui/host-web)", () => {
-  it("mounts FolioApp onto DOM, syncs document.title, exposes ARIA, and handles full board lifecycle", async () => {
+  it("mounts FolioApp onto DOM, wires storage/lifecycle/viewport/id layers, and handles full board lifecycle", async () => {
     const dom = createFakeDom()
-    const repo = makeMemoryBoardRepository()
+    const store = makeMemoryKeyValueStore()
+    const storageKey = "folio.web.test"
+
+    const boardRepoLayer = keyValueBoardRepositoryLayer(storageKey).pipe(
+      Layer.provide(store.layer)
+    )
+    const appLayer = Layer.provideMerge(
+      kanbanCommandsLayer,
+      Layer.mergeAll(
+        boardRepoLayer,
+        staticLifecycleLayer("active"),
+        staticViewportLayer({ width: 1280, height: 800, topInset: 0 }),
+        makeSequenceIdGeneratorLayer()
+      )
+    )
 
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           const root = yield* WebHost.mountEffect(
             FolioApp,
-            webAppProps(),
+            loadFolioProps({
+              runtimeTag: "web",
+              platformLabel: "Web · DOM Host"
+            }),
             dom.container as unknown as Element
           )
 
@@ -54,7 +77,7 @@ describe("Folio Kanban Web (@folio/kanban-app on @universal-ui/host-web)", () =>
           assert.ok(moveBtn)
           moveBtn.dispatch("click")
           yield* Effect.promise(() =>
-            waitFor(() => repo.getSaved() !== undefined)
+            waitFor(() => store.getRaw(storageKey) !== undefined)
           )
           assert.equal(cardsInLane(root.model()!.cards, "review")[0]?.id, "card-101")
 
@@ -63,7 +86,7 @@ describe("Folio Kanban Web (@folio/kanban-app on @universal-ui/host-web)", () =>
           assert.ok(themeBtn)
           themeBtn.dispatch("click")
           yield* Effect.promise(() =>
-            waitFor(() => repo.getSaved()?.theme === "graphite")
+            waitFor(() => store.getRaw(storageKey)?.includes('"graphite"') === true)
           )
           assert.equal(root.model()!.theme, "graphite")
 
@@ -74,7 +97,7 @@ describe("Folio Kanban Web (@folio/kanban-app on @universal-ui/host-web)", () =>
           yield* Effect.promise(tick)
           assert.ok(dom.findByTestId("inspector.panel") !== undefined)
 
-          // Quick-add a card via DOM input + Enter submit
+          // Quick-add a card via DOM input + Enter submit (mints ID via IdGenerator + Clock)
           dom.findByTestId("lane.add.backlog")!.dispatch("click")
           yield* Effect.promise(tick)
           const quickInput = dom.findByTestId("quick.input")!
@@ -82,9 +105,12 @@ describe("Folio Kanban Web (@folio/kanban-app on @universal-ui/host-web)", () =>
           quickInput.dispatch("input")
           yield* Effect.promise(tick)
           quickInput.dispatch("keydown", { key: "Enter" })
-          yield* Effect.promise(tick)
+          yield* Effect.promise(() =>
+            waitFor(() => root.model()!.cards.length === 9)
+          )
 
           assert.equal(root.model()!.cards.length, 9)
+          assert.equal(root.model()!.cards[0]?.id, "web-card-1")
           assert.ok(dom.doc.title.includes("9 cards"))
 
           // Undo & Redo
@@ -97,7 +123,7 @@ describe("Folio Kanban Web (@folio/kanban-app on @universal-ui/host-web)", () =>
           yield* Effect.promise(tick)
           assert.equal(root.model()!.cards.length, 9)
         })
-      ).pipe(Effect.provide(makeKanbanLayer({ repository: repo.layer })))
+      ).pipe(Effect.provide(appLayer))
     )
   })
 })

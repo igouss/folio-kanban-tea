@@ -1,7 +1,7 @@
 import type { CardDraft } from "@folio/kanban-domain"
-import type { FolioPalette as Palette } from "@folio/kanban-domain/theme"
 import type { Ui } from "@universal-ui/core"
 import { deriveCardEditorControls } from "../presentation/index.ts"
+import type { FolioPalette as Palette } from "./theme.ts"
 import { FolioAppMessage as Msg, type FolioAppMessage } from "../FolioApp.ts"
 import { fieldLabel, secondaryButtonStyle, segmentedControl } from "./ui.ts"
 

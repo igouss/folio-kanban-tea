@@ -1,39 +1,40 @@
 import "./styles.css"
 import {
   FolioApp,
-  loadInitialBoard,
-  makeKanbanLayerFromStore,
-  webAppProps
+  kanbanCommandsLayer,
+  keyValueBoardRepositoryLayer,
+  loadFolioProps
 } from "@folio/kanban-app"
+import { WebHost } from "@universal-ui/host-web"
 import {
-  WebHost,
+  browserIdGeneratorLayer,
   browserLifecycleLayer,
-  browserStoreLayer
-} from "@universal-ui/host-web"
+  browserViewportLayer
+} from "@universal-ui/platform/browser"
+import { browserStoreLayer } from "@universal-ui/storage/browser"
 import { Effect, Layer } from "effect"
 
-const STORAGE_KEY = "folio.unified.kanban.v1"
+const BoardRepoLayer = keyValueBoardRepositoryLayer("folio.unified.kanban.v1").pipe(
+  Layer.provide(browserStoreLayer)
+)
 
-const initialProps = Effect.map(loadInitialBoard, (saved) => ({
-  ...webAppProps(saved),
-  layout:
-    typeof window !== "undefined" && window.innerWidth < 820
-      ? ("tabs" as const)
-      : ("columns" as const)
-}))
+const AppLayer = Layer.provideMerge(
+  kanbanCommandsLayer,
+  Layer.mergeAll(
+    BoardRepoLayer,
+    browserLifecycleLayer,
+    browserViewportLayer,
+    browserIdGeneratorLayer
+  )
+)
 
 const Main = WebHost.mount(
   FolioApp,
-  initialProps,
+  loadFolioProps({
+    runtimeTag: "web",
+    platformLabel: "Web · DOM Host"
+  }),
   document.getElementById("app")!
-).pipe(
-  Layer.provide(
-    makeKanbanLayerFromStore({
-      storageKey: STORAGE_KEY,
-      store: browserStoreLayer,
-      lifecycle: browserLifecycleLayer
-    })
-  )
-)
+).pipe(Layer.provide(AppLayer))
 
 Layer.launch(Main).pipe(Effect.runFork)

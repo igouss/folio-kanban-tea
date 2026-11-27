@@ -1,7 +1,7 @@
 import { canRedoHistory, canUndoHistory } from "@folio/kanban-domain"
-import type { FolioPalette as Palette } from "@folio/kanban-domain/theme"
 import type { Ui } from "@universal-ui/core"
 import { deriveBoardView } from "../presentation/index.ts"
+import type { FolioPalette as Palette } from "./theme.ts"
 import {
   FolioAppMessage as Msg,
   type FolioAppMessage,

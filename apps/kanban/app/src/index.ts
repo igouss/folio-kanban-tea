@@ -4,23 +4,17 @@ export {
   FolioAppMessage,
   FolioAppModel,
   FolioAppProps,
-  FolioLayout,
-  FolioPlatform,
-  desktopAppProps,
-  mobileAppProps,
-  webAppProps
+  loadFolioProps,
+  type FolioBootstrapConfig
 } from "./FolioApp.ts"
+export { keyValueBoardRepositoryLayer } from "./adapters/index.ts"
 export {
-  BoardRepository,
+  MintCardMeta,
+  MintedCardMetaSchema,
   SaveBoard,
-  keyValueBoardRepositoryLayer,
-  loadInitialBoard,
-  makeKanbanLayer,
-  makeKanbanLayerFromStore,
-  makeMemoryBoardRepository,
-  noopBoardRepositoryLayer,
-  type MemoryBoardRepository
-} from "./ports/index.ts"
+  kanbanCommandsLayer,
+  type MintedCardMeta
+} from "./commands/index.ts"
 export {
   deriveBoardView,
   deriveCardEditorControls,
@@ -44,3 +38,10 @@ export {
   type ReadKanbanBoardOptions,
   type SearchableCard
 } from "./presentation/index.ts"
+export {
+  GRAPHITE_PALETTE,
+  PAPER_PALETTE,
+  paletteFor,
+  priorityColors,
+  type FolioPalette
+} from "./views/theme.ts"

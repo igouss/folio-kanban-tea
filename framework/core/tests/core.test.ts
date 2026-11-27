@@ -2,11 +2,15 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import { Effect, Option, Stream } from "effect"
 import {
+  IdGenerator,
   KeyValueStore,
   Lifecycle,
   Ui,
+  Viewport,
   makeMemoryKeyValueStore,
-  staticLifecycleLayer
+  makeSequenceIdGeneratorLayer,
+  staticLifecycleLayer,
+  staticViewportLayer
 } from "../src/index.ts"
 
 describe("@universal-ui/core", () => {
@@ -35,7 +39,7 @@ describe("@universal-ui/core", () => {
     assert.equal(mem.getRaw("board"), '{"cards":[]}')
   })
 
-  it("provides typed Lifecycle port stream", async () => {
+  it("provides typed Lifecycle, Viewport, and IdGenerator ports", async () => {
     const states = await Effect.runPromise(
       Effect.gen(function* () {
         const lifecycle = yield* Lifecycle
@@ -43,5 +47,20 @@ describe("@universal-ui/core", () => {
       }).pipe(Effect.provide(staticLifecycleLayer("active")))
     )
     assert.deepEqual(states, ["active"])
+
+    const viewport = await Effect.runPromise(
+      Effect.flatMap(Viewport, (vp) => vp.current).pipe(
+        Effect.provide(staticViewportLayer({ width: 1280, height: 800, topInset: 0 }))
+      )
+    )
+    assert.deepEqual(viewport, { width: 1280, height: 800, topInset: 0 })
+
+    const ids = await Effect.runPromise(
+      Effect.gen(function* () {
+        const gen = yield* IdGenerator
+        return [yield* gen.nextId("card"), yield* gen.nextId("card")]
+      }).pipe(Effect.provide(makeSequenceIdGeneratorLayer()))
+    )
+    assert.deepEqual(ids, ["card-1", "card-2"])
   })
 })

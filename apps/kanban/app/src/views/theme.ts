@@ -1,4 +1,4 @@
-import type { Priority, ThemeMode } from "./types.ts"
+import type { Priority, ThemeMode } from "@folio/kanban-domain"
 
 export interface FolioPalette {
   readonly canvas: string

@@ -1,4 +1,6 @@
-import type { Component, View } from "@effect/ui"
+import type { Component, Renderer, View } from "@effect/ui"
+import type { Ui } from "@universal-ui/core"
+import type * as Effect from "effect/Effect"
 import type * as Layer from "effect/Layer"
 import {
   Engine,
@@ -13,14 +15,15 @@ import {
   StyleSheet,
   processColor
 } from "react-native"
+import type * as Fabric from "./Fabric.ts"
 import { mountApp, type MountedFabricApp } from "./FabricHost.ts"
 import { currentConditions, watchConditions } from "./css/conditions.ts"
 import { attachStyles } from "./css/index.ts"
 
-export type RegisterAppOptions = Readonly<{
+export type RegisterAppOptions<RLayer = never> = Readonly<{
   appKey?: string | undefined
   styleSheet?: CssStyleSheet | undefined
-  layer?: Layer.Layer<any> | undefined
+  layer?: Layer.Layer<RLayer> | undefined
 }>
 
 type RunningApp = Readonly<{
@@ -71,11 +74,18 @@ export const registerApp = <
   Msg,
   Events,
   R,
-  V extends View.Elements
+  V extends View.Elements,
+  RP = never
 >(
   component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
-  props: Props,
-  { appKey = "main", styleSheet, layer }: RegisterAppOptions = {}
+  props: Props | Effect.Effect<Props, never, RP>,
+  {
+    appKey = "main",
+    styleSheet,
+    layer
+  }: RegisterAppOptions<
+    Exclude<R | RP, Fabric.Host | Ui.Host | Renderer.Renderer>
+  > = {}
 ): void => {
   registerPlatformComponents(Platform.OS)
 

@@ -1,5 +1,5 @@
-import type { FolioPalette as Palette } from "@folio/kanban-domain/theme"
 import type { Ui } from "@universal-ui/core"
+import type { FolioPalette as Palette } from "./theme.ts"
 import {
   FolioAppMessage as Msg,
   type FolioAppMessage,

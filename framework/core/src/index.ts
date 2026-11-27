@@ -21,12 +21,18 @@ export {
   type UiStyle
 } from "./Ui.ts"
 export {
+  IdGenerator,
   KeyValueStore,
   Lifecycle,
   LifecycleState,
+  Viewport,
+  ViewportMetricsSchema,
   makeLifecycleLayer,
   makeMemoryKeyValueStore,
+  makeSequenceIdGeneratorLayer,
   noopKeyValueStoreLayer,
   staticLifecycleLayer,
-  type MemoryKeyValueStore
+  staticViewportLayer,
+  type MemoryKeyValueStore,
+  type ViewportMetrics
 } from "./ports/index.ts"

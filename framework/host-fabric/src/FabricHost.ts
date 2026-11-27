@@ -75,10 +75,10 @@ interface EventRecord {
   listeners: Map<string, () => void>
 }
 
-export interface FabricHostOptions {
+export interface FabricHostOptions<RLayer = any> {
   readonly platform?: string | undefined
   readonly requestAnimationFrame?: ((callback: () => void) => void) | undefined
-  readonly layer?: Layer.Layer<any> | undefined
+  readonly layer?: Layer.Layer<RLayer> | undefined
 }
 
 export interface FabricHostHandle {
@@ -544,12 +544,15 @@ export const mountApp = <
   Msg,
   Events,
   R,
-  V extends View.Elements
+  V extends View.Elements,
+  RP = never
 >(
   component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
-  props: Props,
+  props: Props | Effect.Effect<Props, never, RP>,
   engine: Engine,
-  options: FabricHostOptions = {}
+  options: FabricHostOptions<
+    Exclude<R | RP, Fabric.Host | Ui.Host | Renderer.Renderer>
+  > = {}
 ): MountedFabricApp<Model, Msg> => {
   const scope = Effect.runSync(Scope.make())
   const root = Effect.runSync(

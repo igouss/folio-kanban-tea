@@ -1,6 +1,6 @@
 # Universal UI Framework (`@universal-ui/*`) + Folio Kanban (`@folio/kanban-*`)
 
-**A reusable, app-agnostic cross-platform `@effect/ui` framework (`framework/`) built on Hexagonal Architecture (Ports & Adapters) — consumed by one unified Kanban application (`apps/kanban/`) running natively across Web DOM, Desktop Zed GPUI, and Mobile React Native Fabric. Zero React reconcilers. Zero WebViews.**
+**A reusable, app-agnostic cross-platform `@effect/ui` framework (`framework/`) built on Hexagonal Architecture (Ports & Adapters) with open Effect dependency injection — consumed by one unified Kanban application (`apps/kanban/`) running natively across Web DOM, Desktop Zed GPUI, and Mobile React Native Fabric. Zero React reconcilers. Zero WebViews.**
 
 ---
 
@@ -21,7 +21,7 @@
 
 ## Hexagonal Architecture
 
-The repository is strictly split into two independent zones with **one-way dependencies** — `framework/` has **zero knowledge** of Folio or Kanban:
+The repository strictly separates **ports**, **implementation concerns** (rendering, storage, platform lifecycle/viewport/IDs), and the **consumer application**, with one-way dependencies (`framework/` has zero knowledge of Folio or Kanban):
 
 ```text
 ╔═════════════════════════════════════════════════════════════════════════════╗
@@ -31,53 +31,60 @@ The repository is strictly split into two independent zones with **one-way depen
 ║   • "universal-ui" View.Vocabulary     • @ui-sdk/core headless controls     ║
 ║     (box, scroll, button, text,          (segmentedControl, tabs, progress) ║
 ║      input, textarea + UiStyle)        • locale-aware text-match/highlight  ║
-║   • Outbound Ports:                    • generic history & transfer notice  ║
-║     - KeyValueStore (get/set/remove)                                        ║
-║     - Lifecycle (active|inactive|bg)                                        ║
-║   • Ui.Host service port                                                    ║
+║   • Pure Outbound Ports:               • generic history & transfer notice  ║
+║     - KeyValueStore · Lifecycle                                             ║
+║     - Viewport · IdGenerator                                                ║
 ║                                                                             ║
-║   Driven Platform Host Adapters (Renderer.Host + Platform Port Adapters):   ║
+║   Decoupled Non-Rendering Implementation Packages:                          ║
+║   • @universal-ui/storage  (./browser localStorage, ./fs node:fs, ./memory) ║
+║   • @universal-ui/platform (./browser resize/vis, ./node crypto, ./memory)  ║
+║                                                                             ║
+║   Pure Driven UI Rendering Hosts (Renderer.Host<Node> + Ui.Host):           ║
 ║   ┌─────────────────────┐ ┌──────────────────────┐ ┌─────────────────────┐  ║
 ║   │@universal-ui/       │ │@universal-ui/        │ │@universal-ui/       │  ║
 ║   │  host-web           │ │  host-gpui           │ │  host-fabric        │  ║
-║   │• Pure DOM Host      │ │• Zed GPUI Host       │ │• RN C++ Fabric Host │  ║
-║   │• BrowserStore       │ │  (@gpuix/native)     │ │  (@ng-native/fabric)│  ║
-║   │• BrowserLifecycle   │ │• FileStore (node:fs) │ │• AppStateLifecycle  │  ║
-║   │• FakeDom testing    │ │• FakeGpui testing    │ │• FakeFabric testing │  ║
+║   │Pure DOM Renderer    │ │Zed GPUI Renderer     │ │RN C++ Fabric Engine │  ║
+║   │+ FakeDom testing    │ │+ FakeGpui testing    │ │+ AppState & testing │  ║
 ║   └─────────────────────┘ └──────────────────────┘ └─────────────────────┘  ║
 ╚══════════════════════════════════════▲══════════════════════════════════════╝
                                        │ consumes (strictly one-way)
 ╔══════════════════════════════════════┴══════════════════════════════════════╗
 ║                CONSUMER APP (Folio Kanban · apps/kanban/)                   ║
 ║                                                                             ║
-║   @folio/kanban-domain (Inner Hexagon — zero UI/IO dependencies)            ║
-║   • Entities, WIP limits, velocity, pure immutable undo/redo, Schemas,      ║
-║     and Paper/Graphite editorial theme palettes                             ║
+║   @folio/kanban-domain (Inner Hexagon — pure TypeScript, zero UI/I/O)       ║
+║   • Entities, WIP limits, velocity, pure immutable undo/redo, Schemas       ║
+║   • Domain Outbound Port: BoardRepository (./ports — zero storage coupling) ║
 ║                                                                             ║
-║   @folio/kanban-app (Application Core, Domain Ports & Driving UI)           ║
-║   • Outbound Port: BoardRepository + SaveBoard Command                      ║
-║   • Bridge Adapter: keyValueBoardRepositoryLayer (adapts KeyValueStore)     ║
-║   • Presentation: kanbanBoard @ui-sdk/core primitive, card search, VM       ║
-║   • Driving UI: ONE FolioApp component (columns + tabs responsive layouts)  ║
+║   @folio/kanban-app (Application Core, Commands, Adapters & Driving UI)     ║
+║   • Commands (./commands): kanbanCommandsLayer (SaveBoard · MintCardMeta)   ║
+║     requires ONLY BoardRepository | IdGenerator (zero KeyValueStore coupling)║
+║   • Storage Adapter (./adapters): keyValueBoardRepositoryLayer (optional)   ║
+║   • Subscriptions: Lifecycle.changes · Viewport.changes (live responsive)   ║
+║   • Driving UI: ONE FolioApp component + views & Paper/Graphite palettes    ║
 ║                                                                             ║
-║   Thin Delivery Composition Roots (pure wiring, 14–39 lines each):          ║
+║   Platform Composition Roots (explicit Effect Layer dependency wiring):     ║
 ║   ┌─────────────────────┐ ┌──────────────────────┐ ┌─────────────────────┐  ║
 ║   │@folio/kanban-web    │ │@folio/kanban-desktop │ │@folio/kanban-mobile │  ║
 ║   │WebHost +            │ │GpuiHost +            │ │FabricHost +         │  ║
-║   │BrowserStore +       │ │FileStore             │ │AppStateLifecycle    │  ║
-║   │BrowserLifecycle     │ │                      │ │+ Expo SDK 57        │  ║
+║   │storage/browser +    │ │storage/fs +          │ │storage/memory +     │  ║
+║   │platform/browser     │ │platform/node         │ │fabricLifecycle +    │  ║
+║   │                     │ │                      │ │platform/memory      │  ║
 ║   └─────────────────────┘ └──────────────────────┘ └─────────────────────┘  ║
 ╚═════════════════════════════════════════════════════════════════════════════╝
 ```
 
 ### Ports & Adapters Matrix
 
-| Port | Layer | Web Adapter (`host-web`) | Desktop GPUI Adapter (`host-gpui`) | Mobile Fabric Adapter (`host-fabric`) | Test Double |
+Every platform-specific application root explicitly wires every implementation `Layer` into the Effect graph — missing any dependency fails at **compile time** across Web, Desktop, and Mobile:
+
+| Port | Layer | Web Root (`kanban-web`) | Desktop Root (`kanban-desktop`) | Mobile Root (`kanban-mobile`) | Test Double |
 |---|---|---|---|---|---|
-| **`Renderer.Host` + `Ui.Host`** | Framework (`@universal-ui/core`) | `WebHost` (pure DOM) | `GpuiHost` (Zed GPUI via `@gpuix/native`) | `FabricHost` (RN Fabric via `@ng-native/fabric`) | `TestHost`, `FakeDom`, `FakeGpuixRenderer`, `FakeFabric` |
-| **`KeyValueStore`** | Framework (`@universal-ui/core`) | `browserStoreLayer` (`localStorage`) | `makeFileStoreLayer` (`node:fs` JSON files) | `noopKeyValueStoreLayer` / memory | `makeMemoryKeyValueStore` |
-| **`Lifecycle`** | Framework (`@universal-ui/core`) | `browserLifecycleLayer` (`visibilitychange`) | `staticLifecycleLayer("active")` | `fabricLifecycleLayer` (RN `AppState`) | `staticLifecycleLayer`, `fakeAppState` |
-| **`BoardRepository`** | App (`@folio/kanban-app`) | `keyValueBoardRepositoryLayer` → `BrowserStore` | `keyValueBoardRepositoryLayer` → `FileStore` | `noopBoardRepositoryLayer` | `makeMemoryBoardRepository` |
+| **`Renderer.Host` + `Ui.Host`** | `@universal-ui/core` | `@universal-ui/host-web` (`WebHost`) | `@universal-ui/host-gpui` (`GpuiHost`) | `@universal-ui/host-fabric` (`FabricHost`) | `TestHost`, `FakeDom`, `FakeGpuixRenderer`, `FakeFabric` |
+| **`KeyValueStore`** | `@universal-ui/core` | `@universal-ui/storage/browser` (`localStorage`) | `@universal-ui/storage/fs` (`node:fs` JSON) | `@universal-ui/storage/memory` | `makeMemoryKeyValueStore` |
+| **`Lifecycle`** | `@universal-ui/core` | `@universal-ui/platform/browser` (`visibilitychange`) | `@universal-ui/platform/node` (`staticLifecycleLayer`) | `@universal-ui/host-fabric` (`fabricLifecycleLayer`) | `staticLifecycleLayer`, `fakeAppState` |
+| **`Viewport`** | `@universal-ui/core` | `@universal-ui/platform/browser` (live `resize` stream) | `@universal-ui/platform/node` (`1280×800`) | `@universal-ui/platform/memory` (`390×844`, inset `56`) | `staticViewportLayer` |
+| **`IdGenerator`** | `@universal-ui/core` | `@universal-ui/platform/browser` (`crypto.randomUUID`) | `@universal-ui/platform/node` (`node:crypto`) | `@universal-ui/platform/memory` (`cryptoIdGeneratorLayer`) | `makeSequenceIdGeneratorLayer` |
+| **`BoardRepository`** | `@folio/kanban-domain/ports` | `keyValueBoardRepositoryLayer` → `storage/browser` | `keyValueBoardRepositoryLayer` → `storage/fs` | `keyValueBoardRepositoryLayer` → `storage/memory` | `makeMemoryBoardRepository` |
 
 ---
 
@@ -86,8 +93,8 @@ The repository is strictly split into two independent zones with **one-way depen
 Any new application can live alongside `apps/kanban/` as a pure consumer without modifying `framework/`:
 
 1. **Define your domain** in a pure TypeScript package (entities, rules, schemas) with zero UI or I/O imports.
-2. **Define your app** using `Ui.component` from `@universal-ui/core` (`h.box`, `h.scroll`, `h.button`, `h.text`, `h.input`, `h.textarea`) and headless behaviors from `@universal-ui/behaviors`, depending only on typed Effect ports (`KeyValueStore`, `Lifecycle`, or your own domain ports).
-3. **Wire thin platform composition roots** (`web`, `desktop-gpui`, `mobile-fabric`) that compose your component with `@universal-ui/host-web`, `@universal-ui/host-gpui`, or `@universal-ui/host-fabric` and their platform port adapters.
+2. **Define your app** using `Ui.component` from `@universal-ui/core` and headless behaviors from `@universal-ui/behaviors`, declaring open Effect dependencies on ports (`KeyValueStore`, `Lifecycle`, `Viewport`, `IdGenerator`, or domain ports).
+3. **Wire platform composition roots** (`web`, `desktop-gpui`, `mobile-fabric`) that compose your app's open `Layer` with concrete adapters from `@universal-ui/storage/*`, `@universal-ui/platform/*`, and `@universal-ui/host-*`.
 
 ---
 
@@ -98,18 +105,20 @@ Any new application can live alongside `apps/kanban/` as a pure consumer without
 ├── package.json                          # npm workspaces (framework/*, apps/kanban/*)
 ├── tsconfig.base.json                    # Shared strict + exactOptionalPropertyTypes config
 ├── framework/                            # Reusable @universal-ui/* framework (zero app coupling)
-│   ├── core/                             # @universal-ui/core (Ui vocabulary + KeyValueStore & Lifecycle ports)
+│   ├── core/                             # @universal-ui/core (Ui vocabulary + KeyValueStore, Lifecycle, Viewport, IdGenerator ports)
 │   ├── behaviors/                        # @universal-ui/behaviors (generic @ui-sdk/core controls & text-match)
-│   ├── host-web/                         # @universal-ui/host-web (DOM Renderer.Host + Browser adapters + FakeDom)
-│   ├── host-gpui/                        # @universal-ui/host-gpui (Zed GPUI Renderer.Host + FileStore + FakeGpui)
-│   └── host-fabric/                      # @universal-ui/host-fabric (RN Fabric Renderer.Host + AppState + FakeFabric)
+│   ├── storage/                          # @universal-ui/storage (KeyValueStore adapters: ./browser, ./fs, ./memory)
+│   ├── platform/                         # @universal-ui/platform (Lifecycle, Viewport, IdGenerator adapters: ./browser, ./node, ./memory)
+│   ├── host-web/                         # @universal-ui/host-web (pure DOM Renderer.Host + FakeDom testing)
+│   ├── host-gpui/                        # @universal-ui/host-gpui (pure Zed GPUI Renderer.Host + FakeGpui testing)
+│   └── host-fabric/                      # @universal-ui/host-fabric (RN Fabric Renderer.Host + AppState + FakeFabric testing)
 └── apps/
     └── kanban/                           # Folio Kanban consumer app (@folio/kanban-*)
-        ├── domain/                       # @folio/kanban-domain (pure functional domain, ./schema, ./theme)
-        ├── app/                          # @folio/kanban-app (BoardRepository port, presentation, unified FolioApp)
-        ├── web/                          # @folio/kanban-web (39-line Web composition root + Vite)
-        ├── desktop-gpui/                 # @folio/kanban-desktop (31-line Desktop GPUI composition root)
-        └── mobile-fabric/                # @folio/kanban-mobile (14-line Mobile Fabric composition root + Expo)
+        ├── domain/                       # @folio/kanban-domain (pure functional domain, ./ports, ./schema)
+        ├── app/                          # @folio/kanban-app (./commands, ./adapters, ./presentation, views & theme, FolioApp)
+        ├── web/                          # @folio/kanban-web (Web composition root + Vite)
+        ├── desktop-gpui/                 # @folio/kanban-desktop (Desktop GPUI composition root)
+        └── mobile-fabric/                # @folio/kanban-mobile (Mobile Fabric composition root + Expo)
 ```
 
 ---
@@ -125,8 +134,8 @@ npm install
 ### 2. Run type-checks, tests, and builds
 
 ```bash
-npm run typecheck       # Strict + exactOptionalPropertyTypes across all 10 workspaces
-npm test                # Runs all 29 tests: framework (4 suites) + kanban consumer (5 suites)
+npm run typecheck       # Strict + exactOptionalPropertyTypes across all 12 workspaces
+npm test                # Runs framework tests (5 suites) + kanban consumer tests (5 suites)
 npm run test:framework  # Runs framework tests only
 npm run test:kanban     # Runs kanban app & delivery tests only
 npm run build:web       # Production Vite build of @folio/kanban-web

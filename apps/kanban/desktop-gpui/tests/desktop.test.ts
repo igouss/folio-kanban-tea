@@ -2,14 +2,20 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import {
   FolioApp,
-  desktopAppProps,
-  makeKanbanLayer,
-  makeMemoryBoardRepository
+  kanbanCommandsLayer,
+  keyValueBoardRepositoryLayer,
+  loadFolioProps
 } from "@folio/kanban-app"
 import { canRedoHistory, canUndoHistory, cardsInLane } from "@folio/kanban-domain"
 import { GpuiHost } from "@universal-ui/host-gpui"
 import { createFakeGpuixRenderer } from "@universal-ui/host-gpui/testing"
-import { Effect } from "effect"
+import {
+  makeSequenceIdGeneratorLayer,
+  staticLifecycleLayer,
+  staticViewportLayer
+} from "@universal-ui/platform/memory"
+import { makeMemoryKeyValueStore } from "@universal-ui/storage/memory"
+import { Effect, Layer } from "effect"
 
 const tick = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 15))
@@ -23,16 +29,33 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 500): Promise<void>
 }
 
 describe("Folio Kanban Desktop (@folio/kanban-app on @universal-ui/host-gpui)", () => {
-  it("mounts FolioApp on GPUI, updates window title, moves cards, toggles theme, adds & edits cards", async () => {
+  it("mounts FolioApp on GPUI with explicit Effect layers and handles full board lifecycle", async () => {
     const renderer = createFakeGpuixRenderer()
-    const repo = makeMemoryBoardRepository()
+    const store = makeMemoryKeyValueStore()
+    const storageKey = "board"
+
+    const boardRepoLayer = keyValueBoardRepositoryLayer(storageKey).pipe(
+      Layer.provide(store.layer)
+    )
+    const appLayer = Layer.provideMerge(
+      kanbanCommandsLayer,
+      Layer.mergeAll(
+        boardRepoLayer,
+        staticLifecycleLayer("active"),
+        staticViewportLayer({ width: 1280, height: 800, topInset: 0 }),
+        makeSequenceIdGeneratorLayer()
+      )
+    )
 
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           const root = yield* GpuiHost.mount(
             FolioApp,
-            desktopAppProps(),
+            loadFolioProps({
+              runtimeTag: "desktop",
+              platformLabel: "GPUI · Native GPU"
+            }),
             renderer
           )
 
@@ -46,7 +69,7 @@ describe("Folio Kanban Desktop (@folio/kanban-app on @universal-ui/host-gpui)", 
           // Move FOL-101 from In Progress to In Review via native GPUI click
           renderer.clickByTestId("card.next.card-101")
           yield* Effect.promise(() =>
-            waitFor(() => repo.getSaved() !== undefined)
+            waitFor(() => store.getRaw(storageKey) !== undefined)
           )
 
           const afterMove = root.model()!
@@ -58,15 +81,13 @@ describe("Folio Kanban Desktop (@folio/kanban-app on @universal-ui/host-gpui)", 
           )
           assert.equal(review[0]?.id, "card-101")
           assert.equal(afterMove.dispatchCount, 1)
-          assert.ok(repo.getSaved() !== undefined)
 
           // Toggle Paper -> Graphite theme
           renderer.clickByTestId("theme.toggle")
           yield* Effect.promise(() =>
-            waitFor(() => repo.getSaved()?.theme === "graphite")
+            waitFor(() => store.getRaw(storageKey)?.includes('"graphite"') === true)
           )
           assert.equal(root.model()!.theme, "graphite")
-          assert.equal(repo.getSaved()!.theme, "graphite")
 
           // Quick-add a card to Backlog via native GPUI input + submit
           renderer.clickByTestId("lane.add.backlog")
@@ -74,13 +95,16 @@ describe("Folio Kanban Desktop (@folio/kanban-app on @universal-ui/host-gpui)", 
           renderer.typeByTestId("quick.input", "Ship @effect/ui on Zed GPUI")
           yield* Effect.promise(tick)
           renderer.submitByTestId("quick.input", "Ship @effect/ui on Zed GPUI")
-          yield* Effect.promise(tick)
+          yield* Effect.promise(() =>
+            waitFor(() => root.model()!.cards.length === 9)
+          )
 
           const backlog = cardsInLane(root.model()!.cards, "backlog")
           const created = backlog.find(
             (c) => c.title === "Ship @effect/ui on Zed GPUI"
           )
           assert.ok(created)
+          assert.equal(created.id, "desktop-card-1")
           assert.equal(created.code, "FOL-109")
           assert.ok(renderer.getWindowTitle().includes("9 cards"))
 
@@ -124,7 +148,7 @@ describe("Folio Kanban Desktop (@folio/kanban-app on @universal-ui/host-gpui)", 
             "Refined GPUI native host"
           )
         })
-      ).pipe(Effect.provide(makeKanbanLayer({ repository: repo.layer })))
+      ).pipe(Effect.provide(appLayer))
     )
   })
 })

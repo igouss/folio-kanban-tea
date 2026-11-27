@@ -1,7 +1,8 @@
 import {
   FolioApp,
-  makeKanbanLayer,
-  mobileAppProps
+  kanbanCommandsLayer,
+  keyValueBoardRepositoryLayer,
+  loadFolioProps
 } from "@folio/kanban-app"
 import { Engine } from "@ng-native/fabric"
 import {
@@ -14,6 +15,12 @@ import {
   manualFrames,
   type FakeFabricNode
 } from "@universal-ui/host-fabric/testing"
+import {
+  makeSequenceIdGeneratorLayer,
+  staticViewportLayer
+} from "@universal-ui/platform/memory"
+import { makeMemoryKeyValueStore } from "@universal-ui/storage/memory"
+import { Layer } from "effect"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 beforeEach(() => {
@@ -52,11 +59,33 @@ const setup = () => {
     conditions
   })
   const frames = manualFrames()
-  const app = FabricHost.mountApp(FolioApp, mobileAppProps(), engine, {
-    platform: "ios",
-    requestAnimationFrame: frames.requestAnimationFrame,
-    layer: makeKanbanLayer({ lifecycle: fabricLifecycleLayer })
-  })
+  const store = makeMemoryKeyValueStore()
+  const boardRepoLayer = keyValueBoardRepositoryLayer("folio.mobile.test").pipe(
+    Layer.provide(store.layer)
+  )
+  const appLayer = Layer.provideMerge(
+    kanbanCommandsLayer,
+    Layer.mergeAll(
+      boardRepoLayer,
+      fabricLifecycleLayer,
+      staticViewportLayer({ width: 390, height: 844, topInset: 56 }),
+      makeSequenceIdGeneratorLayer()
+    )
+  )
+
+  const app = FabricHost.mountApp(
+    FolioApp,
+    loadFolioProps({
+      runtimeTag: "mobile",
+      platformLabel: "Fabric · Native Mobile"
+    }),
+    engine,
+    {
+      platform: "ios",
+      requestAnimationFrame: frames.requestAnimationFrame,
+      layer: appLayer
+    }
+  )
 
   const settle = async (isSettled: () => boolean): Promise<number> => {
     const before = fabric.calls.completeRoot
@@ -105,12 +134,12 @@ const setup = () => {
   const hasText = (text: string) => () =>
     fabric.render().includes(`RawText "${text}"`)
 
-  return { fabric, app, settle, byTestID, tap, typeIn, hasText }
+  return { fabric, app, store, settle, byTestID, tap, typeIn, hasText }
 }
 
 describe("Folio Kanban Mobile (@folio/kanban-app on @universal-ui/host-fabric)", () => {
   it("mounts FolioApp onto native Fabric views, switches lanes in 1 commit, and moves a card", async () => {
-    const { fabric, app, settle, byTestID, tap, hasText } = setup()
+    const { fabric, app, store, settle, byTestID, tap, hasText } = setup()
 
     await settle(hasText("Share pure TEA domain across Web, Desktop GPU & Mobile"))
     expect(byTestID("board.scroll")).toBeDefined()
@@ -127,6 +156,7 @@ describe("Folio Kanban Mobile (@folio/kanban-app on @universal-ui/host-fabric)",
     tap("card.next.card-101")
     await settle(hasText("Moved FOL-101 to In Review."))
     expect(byTestID("card.card-101")).toBeUndefined()
+    expect(store.getRaw("folio.mobile.test")).toBeDefined()
 
     // Check card landed in In Review
     tap("lane.tab.review")
@@ -141,7 +171,7 @@ describe("Folio Kanban Mobile (@folio/kanban-app on @universal-ui/host-fabric)",
     app.dispose()
   })
 
-  it("creates a new card via native Fabric TextInput and filters with Search", async () => {
+  it("creates a new card via MintCardMeta + native Fabric TextInput and filters with Search", async () => {
     const { app, settle, byTestID, tap, typeIn, hasText } = setup()
 
     await settle(() => byTestID("quick.input") !== undefined)

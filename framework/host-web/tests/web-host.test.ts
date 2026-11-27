@@ -1,12 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { KeyValueStore } from "@universal-ui/core"
-import { Effect, Option } from "effect"
-import {
-  makeBrowserStoreLayer,
-  uiStyleToCss,
-  type WebStorageLike
-} from "../src/index.ts"
+import { uiStyleToCss } from "../src/index.ts"
 
 describe("@universal-ui/host-web", () => {
   it("translates universal flexbox and spacing shorthands to DOM CSS", () => {
@@ -49,36 +43,5 @@ describe("@universal-ui/host-web", () => {
     assert.equal(styledBtn["borderWidth"], "1px")
     assert.equal(styledBtn["padding"], undefined)
     assert.equal(styledBtn["paddingLeft"], "10px")
-  })
-
-  it("adapts WebStorageLike to the KeyValueStore port with prefixing", async () => {
-    const raw = new Map<string, string>()
-    const fakeStorage: WebStorageLike = {
-      getItem: (k) => raw.get(k) ?? null,
-      setItem: (k, v) => {
-        raw.set(k, v)
-      },
-      removeItem: (k) => {
-        raw.delete(k)
-      }
-    }
-
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        const store = yield* KeyValueStore
-        yield* store.set("state", "ok")
-        const loaded = yield* store.get("state")
-        yield* store.remove("state")
-        const removed = yield* store.get("state")
-        return { loaded, removed }
-      }).pipe(
-        Effect.provide(
-          makeBrowserStoreLayer({ prefix: "demo.", storage: fakeStorage })
-        )
-      )
-    )
-
-    assert.deepEqual(result.loaded, Option.some("ok"))
-    assert.deepEqual(result.removed, Option.none())
   })
 })

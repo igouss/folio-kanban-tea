@@ -16,6 +16,8 @@
     "@folio/kanban-domain": "*",
     "@universal-ui/core": "*",
     "@universal-ui/host-web": "*",
+    "@universal-ui/platform": "*",
+    "@universal-ui/storage": "*",
     "effect": "^4.1.6"
   },
   "devDependencies": {

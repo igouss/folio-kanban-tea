@@ -1,0 +1,22 @@
+{
+  "name": "@universal-ui/platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts",
+    "./node": "./src/node.ts",
+    "./memory": "./src/memory.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@universal-ui/core": "*"
+  },
+  "peerDependencies": {
+    "effect": "^4.1.4"
+  }
+}

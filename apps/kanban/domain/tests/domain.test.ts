@@ -85,6 +85,7 @@ describe('@folio/kanban-domain (pure domain hexagon)', () => {
       lane: 'backlog',
       id: 'c-bad',
       tag: 'test',
+      createdAt: '2026-11-26T15:00:00Z',
     })
     assert.equal(invalid.ok, false)
 
@@ -94,6 +95,7 @@ describe('@folio/kanban-domain (pure domain hexagon)', () => {
       lane: 'backlog',
       id: 'c-session-1',
       tag: 'core',
+      createdAt: '2026-11-26T15:00:00Z',
     })
     assert.equal(created.ok, true)
     session = { cards: created.cards, history: created.history }

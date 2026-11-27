@@ -1,4 +1,3 @@
-import { paletteFor } from "@folio/kanban-domain/theme"
 import type { Ui } from "@universal-ui/core"
 import { Option } from "effect"
 import type {
@@ -9,13 +8,16 @@ import type {
 import { columnsBoardView } from "./ColumnsBoardView.ts"
 import { editorView } from "./EditorView.ts"
 import { tabsBoardView } from "./TabsBoardView.ts"
+import { paletteFor } from "./theme.ts"
+
+export const COMPACT_BREAKPOINT_PX = 820
 
 export const boardView = (
   h: Ui.H<FolioAppMessage, FolioAppProps>,
   model: FolioAppModel
 ) => {
   const p = paletteFor(model.theme)
-  const isTabs = h.props.layout === "tabs"
+  const isTabs = model.viewport.width < COMPACT_BREAKPOINT_PX
 
   if (isTabs && Option.isSome(model.editDraft)) {
     return h.box
@@ -24,7 +26,7 @@ export const boardView = (
         flex: 1,
         width: "100%",
         height: "100%",
-        paddingTop: h.props.topInset,
+        paddingTop: model.viewport.topInset,
         backgroundColor: p.canvas
       })
       .children(editorView(h, model.editDraft.value, model.notice, p, "screen"))
@@ -37,7 +39,7 @@ export const boardView = (
       flex: 1,
       width: "100%",
       height: "100%",
-      paddingTop: h.props.topInset,
+      paddingTop: model.viewport.topInset,
       backgroundColor: p.canvas,
       color: p.ink,
       fontSize: 13

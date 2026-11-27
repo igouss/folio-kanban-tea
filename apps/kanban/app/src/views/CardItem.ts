@@ -1,10 +1,10 @@
 import { adjacentLanes, laneMeta, type KanbanCard } from "@folio/kanban-domain"
+import { highlightText } from "@universal-ui/behaviors"
+import type { Ui } from "@universal-ui/core"
 import {
   priorityColors,
   type FolioPalette as Palette
-} from "@folio/kanban-domain/theme"
-import { highlightText } from "@universal-ui/behaviors"
-import type { Ui } from "@universal-ui/core"
+} from "./theme.ts"
 import { FolioAppMessage as Msg, type FolioAppMessage } from "../FolioApp.ts"
 
 export interface CardItemOptions {

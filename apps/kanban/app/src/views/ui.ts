@@ -1,9 +1,9 @@
-import type { FolioPalette as Palette } from "@folio/kanban-domain/theme"
 import {
   nextSegmentedValue,
   type SegmentedControlSnapshot
 } from "@universal-ui/behaviors"
 import type { Ui, UiStyle } from "@universal-ui/core"
+import type { FolioPalette as Palette } from "./theme.ts"
 
 export const secondaryButtonStyle = (
   p: Palette,

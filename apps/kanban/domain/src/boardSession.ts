@@ -88,7 +88,7 @@ export const applyQuickCreate = (
     readonly lane: LaneId
     readonly id: string
     readonly tag: string
-    readonly createdAt?: string
+    readonly createdAt: string
     readonly minTitleLength?: number
   },
 ):
@@ -116,7 +116,7 @@ export const applyQuickCreate = (
     },
     {
       id: params.id,
-      createdAt: params.createdAt ?? '2026-11-26T00:00:00.000Z',
+      createdAt: params.createdAt,
     },
   )
 
