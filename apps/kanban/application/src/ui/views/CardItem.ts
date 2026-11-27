@@ -96,18 +96,29 @@ export const cardItem = (
       h.button
         .testId(`card.open.${card.id}`)
         .ariaLabel(`Open ${card.code} ${card.title}`)
-        .style({
-          flexDirection: "row",
-          flexWrap: "wrap",
-          alignItems: "flex-start",
-          justifyContent: "flex-start",
-          width: "100%"
-        })
+        .style(
+          titleSegments.length === 1
+            ? {
+                flexDirection: "column",
+                alignItems: "stretch",
+                justifyContent: "flex-start",
+                width: "100%"
+              }
+            : {
+                flexDirection: "row",
+                flexWrap: "wrap",
+                alignItems: "flex-start",
+                justifyContent: "flex-start",
+                width: "100%"
+              }
+        )
         .on("press", Msg.ClickedOpenEditor({ cardId: card.id }))
         .children(
           titleSegments.length === 1
             ? h.text
                 .style({
+                  width: "100%",
+                  textAlign: "left",
                   fontSize: options.isTabsLayout ? 15 : 13.5,
                   fontWeight: "700",
                   color: p.ink
@@ -137,6 +148,9 @@ export const cardItem = (
                   h.text
                     .key(`${card.id}-seg-${idx}`)
                     .style({
+                      maxWidth: "100%",
+                      flexShrink: 1,
+                      minWidth: 0,
                       fontSize: 13.5,
                       fontWeight: "700",
                       color: seg.match ? p.accent : p.ink,

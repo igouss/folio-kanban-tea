@@ -127,13 +127,21 @@ export interface InputEvents extends ContainerEvents {
 
 export type AutoCapitalize = "none" | "sentences" | "words" | "characters"
 
+export interface UiContainer<
+  out Msg,
+  out R = never,
+  in out E = ContainerEvents,
+  out Tag extends string = string
+> {
+  readonly "~With"?: UiContainer<Msg, R | this["~Add"], E, Tag>
+}
+
 export class UiContainer<
   out Msg,
   out R = never,
   in out E = ContainerEvents,
   out Tag extends string = string
 > extends View.ContainerBuilder<Msg, R, E, unknown, Tag> {
-  declare readonly "~With"?: UiContainer<Msg, R | this["~Add"], E, Tag>
 
   style(style: UiStyle): this {
     return this.prop("style", style)
@@ -200,12 +208,19 @@ export class UiContainer<
   }
 }
 
+export interface UiText<
+  out Msg,
+  out R = never,
+  out Tag extends string = "text"
+> {
+  readonly "~With"?: UiText<Msg, R | this["~Add"], Tag>
+}
+
 export class UiText<
   out Msg,
   out R = never,
   out Tag extends string = "text"
 > extends View.ContainerBuilder<Msg, R, ContainerEvents, unknown, Tag> {
-  declare readonly "~With"?: UiText<Msg, R | this["~Add"], Tag>
 
   style(style: UiStyle): this {
     return this.prop("style", style)
@@ -220,12 +235,19 @@ export class UiText<
   }
 }
 
+export interface UiField<
+  out Msg,
+  out R = never,
+  out Tag extends string = string
+> {
+  readonly "~With"?: UiField<Msg, R | this["~Add"], Tag>
+}
+
 export class UiField<
   out Msg,
   out R = never,
   out Tag extends string = string
 > extends View.ElementBuilder<Msg, R, InputEvents, unknown, Tag> {
-  declare readonly "~With"?: UiField<Msg, R | this["~Add"], Tag>
 
   style(style: UiStyle): this {
     return this.prop("style", style)
