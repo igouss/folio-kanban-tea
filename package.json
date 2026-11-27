@@ -4,8 +4,14 @@
   "version": "0.5.0",
   "type": "module",
   "workspaces": [
-    "framework/*",
-    "apps/kanban/*"
+    "framework/core",
+    "framework/behaviors",
+    "framework/adapters/storage",
+    "framework/adapters/platform",
+    "framework/adapters/renderers/*",
+    "apps/kanban/domain",
+    "apps/kanban/application",
+    "apps/kanban/targets/*"
   ],
   "scripts": {
     "dev:web": "npm -w @folio/kanban-web run dev",

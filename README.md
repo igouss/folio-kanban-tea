@@ -102,23 +102,35 @@ Any new application can live alongside `apps/kanban/` as a pure consumer without
 
 ```text
 .
-├── package.json                          # npm workspaces (framework/*, apps/kanban/*)
-├── tsconfig.base.json                    # Shared strict + exactOptionalPropertyTypes config
-├── framework/                            # Reusable @universal-ui/* framework (zero app coupling)
-│   ├── core/                             # @universal-ui/core (Ui vocabulary + KeyValueStore, Lifecycle, Viewport, IdGenerator ports)
-│   ├── behaviors/                        # @universal-ui/behaviors (generic @ui-sdk/core controls & text-match)
-│   ├── storage/                          # @universal-ui/storage (KeyValueStore adapters: ./browser, ./fs, ./memory)
-│   ├── platform/                         # @universal-ui/platform (Lifecycle, Viewport, IdGenerator adapters: ./browser, ./node, ./memory)
-│   ├── host-web/                         # @universal-ui/host-web (pure DOM Renderer.Host + FakeDom testing)
-│   ├── host-gpui/                        # @universal-ui/host-gpui (pure Zed GPUI Renderer.Host + FakeGpui testing)
-│   └── host-fabric/                      # @universal-ui/host-fabric (RN Fabric Renderer.Host + AppState + FakeFabric testing)
+├── package.json                              # Explicit hexagonal npm workspaces
+├── tsconfig.base.json                        # Shared strict + exactOptionalPropertyTypes config
+├── framework/                                # Reusable @universal-ui/* Hexagonal Framework (zero app coupling)
+│   ├── core/                                 # @universal-ui/core (Inner Hexagon: Ui vocabulary + pure outbound ports/)
+│   ├── behaviors/                            # @universal-ui/behaviors (generic @ui-sdk/core headless controls)
+│   └── adapters/                             # Outer-Ring Driven Adapters
+│       ├── storage/                          # @universal-ui/storage (KeyValueStore: ./browser, ./fs, ./memory)
+│       ├── platform/                         # @universal-ui/platform (Lifecycle, Viewport, IdGenerator: ./browser, ./node, ./memory)
+│       └── renderers/                        # Pure UI Rendering Hosts (Renderer.Host<Node>)
+│           ├── web-dom/                      # @universal-ui/host-web (DOM Renderer.Host + FakeDom testing)
+│           ├── desktop-gpui/                 # @universal-ui/host-gpui (Zed GPUI Renderer.Host + FakeGpui testing)
+│           └── mobile-fabric/                # @universal-ui/host-fabric (RN Fabric Renderer.Host + AppState + FakeFabric)
 └── apps/
-    └── kanban/                           # Folio Kanban consumer app (@folio/kanban-*)
-        ├── domain/                       # @folio/kanban-domain (pure functional domain, ./ports, ./schema)
-        ├── app/                          # @folio/kanban-app (./commands, ./adapters, ./presentation, views & theme, FolioApp)
-        ├── web/                          # @folio/kanban-web (Web composition root + Vite)
-        ├── desktop-gpui/                 # @folio/kanban-desktop (Desktop GPUI composition root)
-        └── mobile-fabric/                # @folio/kanban-mobile (Mobile Fabric composition root + Expo)
+    └── kanban/                               # Folio Kanban — Hexagonal Consumer App (@folio/kanban-*)
+        ├── domain/                           # Inner Hexagon (@folio/kanban-domain — zero UI/IO)
+        │   └── src/
+        │       ├── model/                    #   Entities, value objects, schemas, seed
+        │       ├── rules/                    #   Pure domain operations & immutable session history
+        │       └── ports/                    #   Domain outbound port (BoardRepository)
+        ├── application/                      # Application Layer (@folio/kanban-app)
+        │   └── src/
+        │       ├── commands/                 #   Use-case Effect commands (SaveBoard, MintCardMeta)
+        │       ├── adapters/                 #   Driven storage adapter (KeyValueBoardRepository)
+        │       ├── presentation/             #   Kanban view-models, search, kanbanBoard primitive
+        │       └── ui/                       #   Driving universal UI (FolioApp, theme, views/)
+        └── targets/                          # Outermost Delivery Composition Roots (Effect Layer wiring)
+            ├── web/                          # @folio/kanban-web (Web DOM + localStorage + Vite)
+            ├── desktop-gpui/                 # @folio/kanban-desktop (Zed GPUI + FileStore + Node)
+            └── mobile-fabric/                # @folio/kanban-mobile (RN Fabric + AppState + Expo)
 ```
 
 ---
@@ -149,7 +161,7 @@ npm run start:desktop   # Desktop Native GPU (@universal-ui/host-gpui -> Zed GPU
 npm run start:mobile    # Mobile Native iOS/Android (@universal-ui/host-fabric -> Expo Dev Client)
 ```
 
-For Android native builds (`cd apps/kanban/mobile-fabric && npm run prebuild && npm run android`), Android SDK (API 36, NDK 27) and JDK 21 are required.
+For Android native builds (`cd apps/kanban/targets/mobile-fabric && npm run prebuild && npm run android`), Android SDK (API 36, NDK 27) and JDK 21 are required.
 
 > **Note for Linux pure-Wayland desktops (e.g. Hyprland with `xwayland:enabled = false`)**: Android Emulator's bundled Qt ships `xcb` rather than Wayland. Run it inside a nested `labwc` Wayland window:
 > ```bash

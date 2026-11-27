@@ -4,9 +4,9 @@ dist/
 *.tsbuildinfo
 
 # Expo / React Native generated native folders
-apps/kanban/mobile-fabric/.expo/
-apps/kanban/mobile-fabric/android/
-apps/kanban/mobile-fabric/ios/
+apps/kanban/targets/mobile-fabric/.expo/
+apps/kanban/targets/mobile-fabric/android/
+apps/kanban/targets/mobile-fabric/ios/
 
 # Logs & OS artifacts
 *.log
