@@ -269,6 +269,10 @@ export class UiField<
     return this.prop("placeholder", text)
   }
 
+  placeholderColor(color: string): this {
+    return this.prop("placeholderTextColor", color)
+  }
+
   autoFocus(enabled = true): this {
     return this.prop("autoFocus", enabled)
   }

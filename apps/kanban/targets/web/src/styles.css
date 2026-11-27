@@ -22,3 +22,13 @@ textarea,
 button {
   font-family: inherit;
 }
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--placeholder-color, currentColor);
+  opacity: 1;
+}
+
+::view-transition {
+  pointer-events: none;
+}

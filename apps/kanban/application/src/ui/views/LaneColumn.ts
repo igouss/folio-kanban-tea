@@ -120,6 +120,7 @@ export const laneColumn = (
               .ariaLabel(`New card title in ${lane.title}`)
               .value(composerMode.title)
               .placeholder(`New card in ${lane.title}...`)
+              .placeholderColor(p.inkMuted)
               .autoFocus(true)
               .style({
                 width: "100%",

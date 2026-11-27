@@ -211,6 +211,7 @@ export const columnsBoardView = (
                 .ariaLabel("Search cards")
                 .value(screen.searchQuery)
                 .placeholder("Fuzzy filter by code, title, #tag, assignee...")
+                .placeholderColor(p.inkMuted)
                 .style({
                   width: 260,
                   paddingVertical: 7,

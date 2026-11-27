@@ -415,6 +415,21 @@ export const makeHost = (doc: Document): WebHostHandle => {
         else el.removeAttribute("placeholder")
         return
       }
+      if (propName === "placeholderTextColor") {
+        const styleDecl = el.style as unknown as Record<string, string>
+        if (typeof value === "string") {
+          if (typeof el.style.setProperty === "function") {
+            el.style.setProperty("--placeholder-color", value)
+          } else {
+            styleDecl["--placeholder-color"] = value
+          }
+        } else if (typeof el.style.removeProperty === "function") {
+          el.style.removeProperty("--placeholder-color")
+        } else {
+          delete styleDecl["--placeholder-color"]
+        }
+        return
+      }
       if (propName === "minRows" && meta?.uiTag === "textarea") {
         if (typeof value === "number") el.setAttribute("rows", String(value))
         return

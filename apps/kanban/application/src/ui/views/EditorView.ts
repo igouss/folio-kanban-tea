@@ -103,6 +103,7 @@ export const editorView = (
         .ariaLabel("Card title")
         .value(draft.title)
         .placeholder("Card title...")
+        .placeholderColor(p.inkMuted)
         .style({
           width: "100%",
           paddingVertical: 9,
@@ -126,6 +127,7 @@ export const editorView = (
         .ariaLabel("Card notes")
         .value(draft.notes)
         .placeholder("Notes and acceptance criteria...")
+        .placeholderColor(p.inkMuted)
         .minRows(3)
         .maxRows(5)
         .style({
@@ -177,6 +179,7 @@ export const editorView = (
                 .ariaLabel("Assignee initials")
                 .value(draft.assignee)
                 .placeholder("ME")
+                .placeholderColor(p.inkMuted)
                 .autoCapitalize("characters")
                 .autoCorrect(false)
                 .style({
