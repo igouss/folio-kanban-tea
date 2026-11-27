@@ -1,8 +1,8 @@
-import 'expo'
+import "expo"
 
-import { registerApp } from 'foldkit-native'
-import tailwind from '../.tailwind/app.tailwind.js'
-import { makeKanbanMobile } from './app'
+import { registerApp } from "@folio/effect-ui-fabric/register"
+import tailwind from "../.tailwind/app.tailwind.js"
+import { KanbanMobile } from "./app"
 
-// Drives React Native Fabric directly via @ng-native/fabric with no React reconciler.
-registerApp(makeKanbanMobile, { styleSheet: tailwind })
+// Drives React Native Fabric directly from @effect/ui via @ng-native/fabric with no React reconciler.
+registerApp(KanbanMobile, {}, { styleSheet: tailwind })

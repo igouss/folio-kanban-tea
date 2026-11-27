@@ -1,218 +1,177 @@
-import type { Html, NativeBuilder } from 'foldkit-native/view'
-import { adjacentLanes, laneLabel, type Card } from '../domain'
-import { Message } from '../message'
-import { priorityColors, type Palette } from './palette'
+import type { Fabric } from "@folio/effect-ui-fabric"
+import {
+  KanbanMobileMessage as Msg,
+  type KanbanMobileMessage
+} from "../schema"
+import { adjacentLanes, laneLabel, type Card } from "../domain"
+import { priorityColors, type Palette } from "./palette"
 
 export const cardRow = (
+  h: Fabric.H<KanbanMobileMessage>,
   card: Card,
-  p: Palette,
-  n: NativeBuilder<Message>,
-): Html => {
+  p: Palette
+) => {
   const prio = priorityColors(card.priority, p)
   const { prev, next } = adjacentLanes(card.lane)
 
-  return n.view(
-    [
-      n.Key(card.id),
-      n.TestID(`card.${card.id}`),
-      n.Class('rounded-xl p-3.5 mb-3'),
-      n.Style({
-        backgroundColor: p.surface,
-        borderWidth: 1,
-        borderColor: p.border,
-        borderLeftWidth: 4,
-        borderLeftColor: prio.fg,
-        gap: 8,
-      }),
-    ],
-    [
-      n.view(
-        [
-          n.Style({
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }),
-        ],
-        [
-          n.view(
-            [n.Style({ flexDirection: 'row', alignItems: 'center', gap: 6 })],
-            [
-              n.text(
-                [n.Style({ fontSize: 11, fontWeight: '700', color: p.inkMuted })],
-                [card.code],
-              ),
-              n.view(
-                [
-                  n.Style({
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
-                    borderRadius: 4,
-                    backgroundColor: prio.bg,
-                  }),
-                ],
-                [
-                  n.text(
-                    [n.Style({ fontSize: 10, fontWeight: '700', color: prio.fg })],
-                    [prio.label],
-                  ),
-                ],
-              ),
-            ],
-          ),
-          n.view(
-            [n.Style({ flexDirection: 'row', alignItems: 'center', gap: 6 })],
-            [
-              n.text(
-                [n.Style({ fontSize: 11, fontWeight: '700', color: p.inkMuted })],
-                [`${card.points}pt`],
-              ),
-              n.view(
-                [
-                  n.Style({
-                    width: 24,
-                    height: 24,
-                    borderRadius: 12,
-                    backgroundColor: p.avatarBg,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }),
-                ],
-                [
-                  n.text(
-                    [n.Style({ fontSize: 10, fontWeight: '700', color: p.avatarInk })],
-                    [card.assignee],
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-      n.pressable(
-        [
-          n.TestID(`card.open.${card.id}`),
-          n.AccessibilityLabel(`Edit ${card.title}`),
-          n.OnPress(Message.PressedOpenCard({ cardId: card.id })),
-        ],
-        [
-          n.text(
-            [n.Style({ fontSize: 15, fontWeight: '700', color: p.ink })],
-            [card.title],
-          ),
-        ],
-      ),
-      card.notes.length > 0
-        ? n.text(
-            [n.Style({ fontSize: 12.5, color: p.inkSoft })],
-            [card.notes],
-          )
-        : null,
-      n.view(
-        [n.Style({ flexDirection: 'row', flexWrap: 'wrap', gap: 5 })],
-        card.tags.map((tag) =>
-          n.view(
-            [
-              n.Key(tag),
-              n.Style({
+  return h.view
+    .key(card.id)
+    .testID(`card.${card.id}`)
+    .class("rounded-xl p-3.5 mb-3")
+    .style({
+      backgroundColor: p.surface,
+      borderWidth: 1,
+      borderColor: p.border,
+      borderLeftWidth: 4,
+      borderLeftColor: prio.fg,
+      gap: 8
+    })
+    .children(
+      h.view
+        .style({
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between"
+        })
+        .children(
+          h.view
+            .style({ flexDirection: "row", alignItems: "center", gap: 6 })
+            .children(
+              h.text
+                .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
+                .children(card.code),
+              h.view
+                .style({
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 4,
+                  backgroundColor: prio.bg
+                })
+                .children(
+                  h.text
+                    .style({ fontSize: 10, fontWeight: "700", color: prio.fg })
+                    .children(prio.label)
+                )
+            ),
+          h.view
+            .style({ flexDirection: "row", alignItems: "center", gap: 6 })
+            .children(
+              h.text
+                .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
+                .children(`${card.points}pt`),
+              h.view
+                .style({
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: p.avatarBg,
+                  alignItems: "center",
+                  justifyContent: "center"
+                })
+                .children(
+                  h.text
+                    .style({ fontSize: 10, fontWeight: "700", color: p.avatarInk })
+                    .children(card.assignee)
+                )
+            )
+        ),
+      h.pressable
+        .testID(`card.open.${card.id}`)
+        .accessibilityLabel(`Edit ${card.title}`)
+        .on("press", Msg.PressedOpenCard({ cardId: card.id }))
+        .children(
+          h.text
+            .style({ fontSize: 15, fontWeight: "700", color: p.ink })
+            .children(card.title)
+        ),
+      card.notes.length > 0 &&
+        h.text
+          .style({ fontSize: 12.5, color: p.inkSoft })
+          .children(card.notes),
+      h.view
+        .style({ flexDirection: "row", flexWrap: "wrap", gap: 5 })
+        .children(
+          card.tags.map((tag) =>
+            h.view
+              .key(tag)
+              .style({
                 paddingHorizontal: 7,
                 paddingVertical: 2,
                 borderRadius: 4,
-                backgroundColor: p.chip,
-              }),
-            ],
-            [n.text([n.Style({ fontSize: 10.5, color: p.inkSoft })], [`#${tag}`])],
-          ),
+                backgroundColor: p.chip
+              })
+              .children(
+                h.text
+                  .style({ fontSize: 10.5, color: p.inkSoft })
+                  .children(`#${tag}`)
+              )
+          )
         ),
-      ),
-      n.view(
-        [
-          n.Style({
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingTop: 8,
-            borderTopWidth: 1,
-            borderTopColor: p.border,
-          }),
-        ],
-        [
-          n.view(
-            [n.Style({ flexDirection: 'row', gap: 8 })],
-            [
-              prev !== undefined
-                ? n.pressable(
-                    [
-                      n.TestID(`card.prev.${card.id}`),
-                      n.AccessibilityLabel(`Move ${card.code} to ${laneLabel(prev)}`),
-                      n.OnPress(
-                        Message.PressedMoveCard({ cardId: card.id, toLane: prev }),
-                      ),
-                      n.Style({
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
-                        borderRadius: 6,
-                        backgroundColor: p.surfaceAlt,
-                        borderWidth: 1,
-                        borderColor: p.border,
-                      }),
-                    ],
-                    [
-                      n.text(
-                        [n.Style({ fontSize: 12, fontWeight: '600', color: p.ink })],
-                        [`‹ ${laneLabel(prev)}`],
-                      ),
-                    ],
+      h.view
+        .style({
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingTop: 8,
+          borderTopWidth: 1,
+          borderTopColor: p.border
+        })
+        .children(
+          h.view
+            .style({ flexDirection: "row", gap: 8 })
+            .children(
+              prev !== undefined &&
+                h.pressable
+                  .testID(`card.prev.${card.id}`)
+                  .accessibilityLabel(`Move ${card.code} to ${laneLabel(prev)}`)
+                  .on("press", Msg.PressedMoveCard({ cardId: card.id, toLane: prev }))
+                  .style({
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 6,
+                    backgroundColor: p.surfaceAlt,
+                    borderWidth: 1,
+                    borderColor: p.border
+                  })
+                  .children(
+                    h.text
+                      .style({ fontSize: 12, fontWeight: "600", color: p.ink })
+                      .children(`‹ ${laneLabel(prev)}`)
+                  ),
+              next !== undefined &&
+                h.pressable
+                  .testID(`card.next.${card.id}`)
+                  .accessibilityLabel(`Move ${card.code} to ${laneLabel(next)}`)
+                  .on("press", Msg.PressedMoveCard({ cardId: card.id, toLane: next }))
+                  .style({
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 6,
+                    backgroundColor: p.surfaceAlt,
+                    borderWidth: 1,
+                    borderColor: p.border
+                  })
+                  .children(
+                    h.text
+                      .style({ fontSize: 12, fontWeight: "600", color: p.ink })
+                      .children(`${laneLabel(next)} ›`)
                   )
-                : null,
-              next !== undefined
-                ? n.pressable(
-                    [
-                      n.TestID(`card.next.${card.id}`),
-                      n.AccessibilityLabel(`Move ${card.code} to ${laneLabel(next)}`),
-                      n.OnPress(
-                        Message.PressedMoveCard({ cardId: card.id, toLane: next }),
-                      ),
-                      n.Style({
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
-                        borderRadius: 6,
-                        backgroundColor: p.surfaceAlt,
-                        borderWidth: 1,
-                        borderColor: p.border,
-                      }),
-                    ],
-                    [
-                      n.text(
-                        [n.Style({ fontSize: 12, fontWeight: '600', color: p.ink })],
-                        [`${laneLabel(next)} ›`],
-                      ),
-                    ],
-                  )
-                : null,
-            ],
-          ),
-          n.pressable(
-            [
-              n.TestID(`card.delete.${card.id}`),
-              n.AccessibilityLabel(`Delete ${card.code}`),
-              n.OnPress(Message.PressedDeleteCard({ cardId: card.id })),
-              n.Style({
-                paddingHorizontal: 9,
-                paddingVertical: 6,
-                borderRadius: 6,
-                backgroundColor: p.accentSoft,
-              }),
-            ],
-            [
-              n.text(
-                [n.Style({ fontSize: 11.5, fontWeight: '700', color: p.accent })],
-                ['Delete'],
-              ),
-            ],
-          ),
-        ],
-      ),
-    ],
-  )
+            ),
+          h.pressable
+            .testID(`card.delete.${card.id}`)
+            .accessibilityLabel(`Delete ${card.code}`)
+            .on("press", Msg.PressedDeleteCard({ cardId: card.id }))
+            .style({
+              paddingHorizontal: 9,
+              paddingVertical: 6,
+              borderRadius: 6,
+              backgroundColor: p.accentSoft
+            })
+            .children(
+              h.text
+                .style({ fontSize: 11.5, fontWeight: "700", color: p.accent })
+                .children("Delete")
+            )
+        )
+    )
 }

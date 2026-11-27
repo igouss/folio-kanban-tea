@@ -30,9 +30,9 @@ export const DEFAULT_CARDS: ReadonlyArray<KanbanCard> = [
   {
     id: 'card-103',
     code: 'FOL-103',
-    title: 'Deliver Desktop GPU via foldkit-gpuix & Zed GPUI',
+    title: 'Deliver Desktop GPU via @effect/ui + Zed GPUI',
     notes:
-      'Render directly to Wayland/Metal with pointer & keyboard drag-and-drop and live Paper/Graphite token switching.',
+      'Custom @effect/ui Renderer.Host driving @gpuix/native directly on Wayland/Metal with live Paper/Graphite themes.',
     lane: 'review',
     priority: 'medium',
     assignee: 'SR',
@@ -43,9 +43,9 @@ export const DEFAULT_CARDS: ReadonlyArray<KanbanCard> = [
   {
     id: 'card-104',
     code: 'FOL-104',
-    title: 'Deliver Mobile iOS/Android via Fabric (no React reconciler)',
+    title: 'Deliver Mobile iOS/Android via @effect/ui + Fabric',
     notes:
-      'Patch FoldKit views directly onto @ng-native/fabric Engine with controlled native TextInputs and AppState subscriptions.',
+      'Custom @effect/ui Renderer.Host patching directly onto @ng-native/fabric with controlled TextInputs and AppState subscriptions.',
     lane: 'in_progress',
     priority: 'high',
     assignee: 'AL',

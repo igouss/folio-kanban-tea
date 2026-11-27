@@ -1,6 +1,6 @@
 {
   "name": "@folio/mobile-fabric",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "main": "src/main.ts",
   "scripts": {
@@ -12,16 +12,15 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@effect/platform-browser": "4.0.0",
+    "@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@main",
+    "@folio/effect-ui-fabric": "file:./packages/effect-ui-fabric",
     "@folio/kanban-core": "file:../../packages/kanban-core",
     "@ng-native/fabric": "0.3.0",
-    "effect": "4.0.0",
+    "effect": "^4.1.6",
     "expo": "~57.0.26",
     "expo-dev-client": "~57.0.19",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.4",
-    "foldkit": "file:./vendor/foldkit-0.166.0.tgz",
-    "foldkit-native": "file:./vendor/foldkit-native",
     "react": "19.2.3",
     "react-native": "0.86.3"
   },

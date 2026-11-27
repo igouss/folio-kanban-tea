@@ -1,7 +1,7 @@
 {
   "name": "@folio/desktop-gpui",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "start": "node src/app.ts",
@@ -9,15 +9,11 @@
     "test": "node --test tests/*.test.ts"
   },
   "dependencies": {
-    "@effect/platform-browser": "4.0.0",
-    "@foldkit-native/ui": "file:./vendor/foldkit-native-ui-0.1.0.tgz",
-    "@foldkit/ui": "0.165.0",
+    "@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@main",
+    "@folio/effect-ui-gpui": "file:./packages/effect-ui-gpui",
     "@folio/kanban-core": "file:../../packages/kanban-core",
     "@gpuix/native": "0.10.0",
-    "effect": "4.0.0",
-    "foldkit": "0.165.0",
-    "foldkit-gpuix": "file:./vendor/foldkit-gpuix-0.1.0.tgz",
-    "foldkit-native": "file:./vendor/foldkit-native-0.1.0.tgz",
+    "effect": "^4.1.6",
     "fractional-indexing": "4.0.0"
   },
   "optionalDependencies": {
@@ -25,6 +21,7 @@
     "@gpuix/native-linux-x64-gnu": "0.10.0"
   },
   "devDependencies": {
+    "@types/node": "^25.0.0",
     "typescript": "5.9.3"
   }
 }

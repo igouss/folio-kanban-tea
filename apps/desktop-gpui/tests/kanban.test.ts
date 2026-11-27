@@ -1,101 +1,100 @@
-import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
-import { Option } from 'effect'
-import { DragAndDrop } from '@foldkit/ui'
-import { sheetFromCss } from 'foldkit-gpuix'
-import { DEFAULT_COLUMNS, matchesFilter } from '../src/domain.ts'
-import { Message } from '../src/message.ts'
-import type { Model } from '../src/model.ts'
-import { kanbanCss } from '../src/theme.ts'
-import { update } from '../src/update.ts'
+import assert from "node:assert/strict"
+import { describe, it } from "node:test"
+import { GpuiHost } from "@folio/effect-ui-gpui"
+import { createFakeGpuixRenderer } from "@folio/effect-ui-gpui/testing"
+import { Effect, Layer, Option } from "effect"
+import { KanbanDesktop, SaveBoard } from "../src/board.ts"
+import { makeMemoryStorageLayer } from "../src/storage.ts"
 
-const initialModel = (): Model => ({
-  columns: DEFAULT_COLUMNS,
-  dragAndDrop: DragAndDrop.init({ id: 'folio-kanban' }),
-  theme: 'paper',
-  searchQuery: '',
-  priorityFilter: 'all',
-  maybeNewCardColumnId: Option.none(),
-  newCardTitle: '',
-  maybeEditDraft: Option.none(),
-  notice: '',
-  announcement: '',
-  dispatchCount: 0,
-})
+const tick = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 10))
 
-describe('Folio Kanban Native (foldkit-gpuix / GPUI)', () => {
-  it('kanbanCss has zero unsupported CSS rules for foldkit-gpuix', () => {
-    const sheet = sheetFromCss(kanbanCss)
-    assert.deepEqual(sheet.unsupported, [])
-  })
-
-  it('moves a card across lanes and increments TEA dispatch counter', () => {
-    const m0 = initialModel()
-    const step = update(
-      m0,
-      Message.ClickedMoveCard({
-        cardId: 'card-101',
-        fromColumnId: 'in_progress',
-        toColumnId: 'review',
-      }),
+describe("Folio Kanban Desktop (@effect/ui + Zed GPUI Host)", () => {
+  it("mounts on GPUI, updates window title, moves cards, toggles theme, adds & edits cards", async () => {
+    const renderer = createFakeGpuixRenderer()
+    const storage = makeMemoryStorageLayer()
+    const appLayer = Layer.merge(
+      storage.layer,
+      SaveBoard.layer.pipe(Layer.provide(storage.layer))
     )
-    const inProgress = step.model.columns.find((c) => c.id === 'in_progress')!
-    const review = step.model.columns.find((c) => c.id === 'review')!
 
-    assert.equal(
-      inProgress.cards.some((c) => c.id === 'card-101'),
-      false,
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const root = yield* GpuiHost.mount(
+            KanbanDesktop,
+            { initialBoard: Option.none() },
+            renderer
+          )
+
+          assert.ok(renderer.getRootId() !== undefined)
+          assert.ok(renderer.getBatchCount() >= 1)
+          assert.ok(renderer.getWindowTitle().includes("8 cards"))
+          assert.ok(renderer.getAllText().includes("Folio Kanban"))
+          assert.ok(renderer.getAllText().includes("@effect/ui"))
+          assert.ok(renderer.getAllText().includes("GPUI · Native GPU"))
+
+          // Move FOL-101 from In Progress to In Review via native GPUI click
+          renderer.clickByTestId("card.next.card-101")
+          yield* Effect.promise(tick)
+
+          const afterMove = root.model()!
+          const inProgress = afterMove.columns.find((c) => c.id === "in_progress")!
+          const review = afterMove.columns.find((c) => c.id === "review")!
+          assert.equal(
+            inProgress.cards.some((c) => c.id === "card-101"),
+            false
+          )
+          assert.equal(review.cards[0]?.id, "card-101")
+          assert.equal(afterMove.dispatchCount, 1)
+          assert.ok(storage.getSaved() !== undefined)
+
+          // Toggle Paper -> Graphite theme
+          renderer.clickByTestId("theme.toggle")
+          yield* Effect.promise(tick)
+          assert.equal(root.model()!.theme, "graphite")
+          assert.equal(storage.getSaved()!.theme, "graphite")
+
+          // Quick-add a card to Backlog via native GPUI input + submit
+          renderer.clickByTestId("lane.add.backlog")
+          yield* Effect.promise(tick)
+          renderer.typeByTestId("add.input", "Ship @effect/ui on Zed GPUI")
+          yield* Effect.promise(tick)
+          renderer.submitByTestId("add.input", "Ship @effect/ui on Zed GPUI")
+          yield* Effect.promise(tick)
+
+          const backlog = root.model()!.columns.find((c) => c.id === "backlog")!
+          const created = backlog.cards.find(
+            (c) => c.title === "Ship @effect/ui on Zed GPUI"
+          )
+          assert.ok(created)
+          assert.equal(created.code, "FOL-109")
+          assert.ok(renderer.getWindowTitle().includes("9 cards"))
+
+          // Filter by search query
+          renderer.typeByTestId("board.search", "Zed GPUI")
+          yield* Effect.promise(tick)
+          assert.ok(renderer.findByTestId(`card.${created.id}`) !== undefined)
+          assert.equal(renderer.findByTestId("card.card-101"), undefined)
+          renderer.typeByTestId("board.search", "")
+          yield* Effect.promise(tick)
+
+          // Open editor modal, edit title, move lane, and save
+          renderer.clickByTestId("card.open.card-104")
+          yield* Effect.promise(tick)
+          assert.ok(renderer.findByTestId("editor.modal") !== undefined)
+          renderer.typeByTestId("editor.title", "Refined GPUI native host")
+          yield* Effect.promise(tick)
+          renderer.clickByTestId("editor.lane.done")
+          yield* Effect.promise(tick)
+          renderer.clickByTestId("editor.save")
+          yield* Effect.promise(tick)
+
+          assert.equal(renderer.findByTestId("editor.modal"), undefined)
+          const done = root.model()!.columns.find((c) => c.id === "done")!
+          assert.equal(done.cards[0]?.title, "Refined GPUI native host")
+        })
+      ).pipe(Effect.provide(appLayer))
     )
-    assert.equal(review.cards[0]?.id, 'card-101')
-    assert.equal(step.model.dispatchCount, 1)
-    assert.ok(step.commands && step.commands.length === 1)
-  })
-
-  it('toggles Paper / Graphite token theme and emits ApplyTheme + SaveBoard commands', () => {
-    const m0 = initialModel()
-    const step = update(m0, Message.ClickedToggleTheme())
-    assert.equal(step.model.theme, 'graphite')
-    assert.equal(step.commands?.length, 2)
-  })
-
-  it('adds a card to Backlog via CompletedGenerateCardId and filters by priority/query', () => {
-    const m0 = initialModel()
-    const step = update(
-      m0,
-      Message.CompletedGenerateCardId({
-        cardId: 'card-new',
-        columnId: 'backlog',
-        title: 'Ship GPUI window',
-      }),
-    )
-    const backlog = step.model.columns.find((c) => c.id === 'backlog')!
-    const created = backlog.cards.find((c) => c.id === 'card-new')
-    assert.ok(created)
-    assert.equal(created.code, 'FOL-109')
-    assert.equal(matchesFilter(created, 'gpui', 'medium'), true)
-    assert.equal(matchesFilter(created, 'gpui', 'high'), false)
-  })
-
-  it('opens editor modal, saves updated title/lane, and closes modal', () => {
-    const m0 = initialModel()
-    const opened = update(
-      m0,
-      Message.ClickedOpenEditor({ cardId: 'card-104' }),
-    )
-    assert.ok(Option.isSome(opened.model.maybeEditDraft))
-
-    const edited = update(
-      opened.model,
-      Message.ChangedEditTitle({ value: 'Refined GPUI keyboard move' }),
-    )
-    const moved = update(
-      edited.model,
-      Message.ChangedEditColumn({ columnId: 'done' }),
-    )
-    const saved = update(moved.model, Message.SubmittedEditCard())
-
-    assert.ok(Option.isNone(saved.model.maybeEditDraft))
-    const done = saved.model.columns.find((c) => c.id === 'done')!
-    assert.equal(done.cards[0]?.title, 'Refined GPUI keyboard move')
   })
 })

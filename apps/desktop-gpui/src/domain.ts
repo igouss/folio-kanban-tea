@@ -5,11 +5,10 @@ import {
   PRIORITY_FILTERS,
   THEME_MODES,
   matchesCard,
-  nextCardCode as coreNextCardCode,
-} from '@folio/kanban-core'
-import { Array, Match, Option, Schema, pipe } from 'effect'
-import { modifyFields } from 'foldkit/struct'
-import { generateKeyBetween } from 'fractional-indexing'
+  nextCardCode as coreNextCardCode
+} from "@folio/kanban-core"
+import { Array, Option, Schema, pipe } from "effect"
+import { generateKeyBetween } from "fractional-indexing"
 
 export const Priority = Schema.Literals(PRIORITIES)
 export type Priority = typeof Priority.Type
@@ -29,7 +28,7 @@ export const Card = Schema.Struct({
   assignee: Schema.String,
   points: Schema.Number,
   tags: Schema.Array(Schema.String),
-  sortKey: Schema.String,
+  sortKey: Schema.String
 })
 export type Card = typeof Card.Type
 
@@ -38,23 +37,29 @@ export const Column = Schema.Struct({
   code: Schema.String,
   name: Schema.String,
   wipLimit: Schema.NullOr(Schema.Number),
-  cards: Schema.Array(Card),
+  cards: Schema.Array(Card)
 })
 export type Column = typeof Column.Type
 
 export const SavedBoard = Schema.Struct({
   columns: Schema.Array(Column),
-  theme: ThemeMode,
+  theme: ThemeMode
 })
 export type SavedBoard = typeof SavedBoard.Type
 
-export const SavedBoardJsonString = Schema.fromJsonString(
-  Schema.toCodecJson(SavedBoard),
-)
+export const SavedBoardJson = Schema.fromJsonString(SavedBoard)
 
-export const STORAGE_KEY = 'folio.kanban.native.v2'
-export const ADD_CARD_INPUT_ID = 'folio-add-card-input'
-export const SEARCH_INPUT_ID = 'folio-search-input'
+export const EditDraft = Schema.Struct({
+  cardId: Schema.String,
+  columnId: Schema.String,
+  code: Schema.String,
+  title: Schema.String,
+  notes: Schema.String,
+  priority: Priority,
+  assignee: Schema.String,
+  points: Schema.Number
+})
+export type EditDraft = typeof EditDraft.Type
 
 const makeSortKeys = (count: number): ReadonlyArray<string> => {
   const keys: Array<string> = []
@@ -84,73 +89,63 @@ export const DEFAULT_COLUMNS: ReadonlyArray<Column> = LANES.map((lane) => {
       assignee: card.assignee,
       points: card.points,
       tags: card.tags,
-      sortKey: keys[index]!,
-    })),
+      sortKey: keys[index]!
+    }))
   }
 })
 
 const generateSortKeyAtIndex = (
   cards: ReadonlyArray<Card>,
-  targetIndex: number,
+  targetIndex: number
 ): string => {
-  const maybeBefore = Array.get(cards, targetIndex - 1)
-  const maybeAfter = Array.get(cards, targetIndex)
-  return generateKeyBetween(
-    Option.match(maybeBefore, {
-      onNone: () => null,
-      onSome: ({ sortKey }) => sortKey,
-    }),
-    Option.match(maybeAfter, {
-      onNone: () => null,
-      onSome: ({ sortKey }) => sortKey,
-    }),
-  )
+  const before = cards[targetIndex - 1]?.sortKey ?? null
+  const after = cards[targetIndex]?.sortKey ?? null
+  return generateKeyBetween(before, after)
 }
 
 export const removeCard = (
   column: Column,
-  cardId: string,
+  cardId: string
 ): { readonly column: Column; readonly maybeCard: Option.Option<Card> } => {
   const maybeCard = Array.findFirst(column.cards, ({ id }) => id === cardId)
   return {
-    column: modifyFields(column, {
-      cards: () => Array.filter(column.cards, ({ id }) => id !== cardId),
-    }),
-    maybeCard,
+    column: {
+      ...column,
+      cards: column.cards.filter(({ id }) => id !== cardId)
+    },
+    maybeCard
   }
 }
 
 export const insertCard = (
   column: Column,
   card: Card,
-  targetIndex: number,
+  targetIndex: number
 ): Column => {
   const clamped = Math.max(0, Math.min(targetIndex, column.cards.length))
   const sortKey = generateSortKeyAtIndex(column.cards, clamped)
-  const updatedCard = modifyFields(card, { sortKey: () => sortKey })
-  return modifyFields(column, {
-    cards: () =>
-      pipe(
-        column.cards,
-        Array.insertAt(clamped, updatedCard),
-        Option.getOrElse(() => [...column.cards, updatedCard]),
-      ),
-  })
+  const updatedCard: Card = { ...card, sortKey }
+  return {
+    ...column,
+    cards: pipe(
+      column.cards,
+      Array.insertAt(clamped, updatedCard),
+      Option.getOrElse(() => [...column.cards, updatedCard])
+    )
+  }
 }
 
 export const appendCard = (column: Column, card: Card): Column => {
   const sortKey = generateSortKeyAtIndex(column.cards, column.cards.length)
-  return modifyFields(column, {
-    cards: () => [
-      ...column.cards,
-      modifyFields(card, { sortKey: () => sortKey }),
-    ],
-  })
+  return {
+    ...column,
+    cards: [...column.cards, { ...card, sortKey }]
+  }
 }
 
 export const findCardWithColumn = (
   columns: ReadonlyArray<Column>,
-  cardId: string,
+  cardId: string
 ): Option.Option<{ readonly column: Column; readonly card: Card }> => {
   for (const column of columns) {
     const found = column.cards.find((card) => card.id === cardId)
@@ -164,39 +159,30 @@ export const findCardWithColumn = (
 export const reorder = (
   columns: ReadonlyArray<Column>,
   itemId: string,
-  fromContainerId: string,
-  toContainerId: string,
-  toIndex: number,
+  fromColumnId: string,
+  toColumnId: string,
+  toIndex: number
 ): ReadonlyArray<Column> => {
-  if (fromContainerId === toContainerId) {
-    return Array.map(columns, (column) => {
-      if (column.id !== fromContainerId) return column
+  if (fromColumnId === toColumnId) {
+    return columns.map((column) => {
+      if (column.id !== fromColumnId) return column
       const { column: withoutCard, maybeCard } = removeCard(column, itemId)
       return Option.match(maybeCard, {
         onNone: () => column,
-        onSome: (card) => insertCard(withoutCard, card, toIndex),
+        onSome: (card) => insertCard(withoutCard, card, toIndex)
       })
     })
   }
 
-  const maybeCard = pipe(
-    columns,
-    Array.findFirst(({ id }) => id === fromContainerId),
-    Option.flatMap(({ cards }) =>
-      Array.findFirst(cards, ({ id }) => id === itemId),
-    ),
-  )
-
-  return Option.match(maybeCard, {
+  const found = findCardWithColumn(columns, itemId)
+  return Option.match(found, {
     onNone: () => columns,
-    onSome: (card) =>
-      Array.map(columns, (column) =>
-        Match.value(column.id).pipe(
-          Match.when(fromContainerId, () => removeCard(column, itemId).column),
-          Match.when(toContainerId, () => insertCard(column, card, toIndex)),
-          Match.orElse(() => column),
-        ),
-      ),
+    onSome: ({ card }) =>
+      columns.map((column) => {
+        if (column.id === fromColumnId) return removeCard(column, itemId).column
+        if (column.id === toColumnId) return insertCard(column, card, toIndex)
+        return column
+      })
   })
 }
 
@@ -206,5 +192,5 @@ export const nextCardCode = (columns: ReadonlyArray<Column>): string =>
 export const matchesFilter = (
   card: Card,
   searchQuery: string,
-  priorityFilter: PriorityFilter,
+  priorityFilter: PriorityFilter
 ): boolean => matchesCard(card, searchQuery, priorityFilter)

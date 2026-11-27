@@ -1,306 +1,258 @@
-import type { Html, NativeBuilder } from 'foldkit-native/view'
-import { LANES, type Priority } from '../domain'
-import { Message } from '../message'
-import type { EditDraft } from '../model'
-import type { Palette } from './palette'
+import type { Fabric } from "@folio/effect-ui-fabric"
+import {
+  KanbanMobileMessage as Msg,
+  type EditDraft,
+  type KanbanMobileMessage
+} from "../schema"
+import { LANES, type Priority } from "../domain"
+import type { Palette } from "./palette"
 
 const PRIORITIES: ReadonlyArray<{
   readonly value: Priority
   readonly label: string
 }> = [
-  { value: 'high', label: 'High' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'low', label: 'Low' },
+  { value: "high", label: "High" },
+  { value: "medium", label: "Medium" },
+  { value: "low", label: "Low" }
 ]
 
 const POINTS: ReadonlyArray<number> = [1, 2, 3, 5, 8, 13]
 
 export const detailView = (
+  h: Fabric.H<KanbanMobileMessage>,
   draft: EditDraft,
   statusBanner: string,
-  p: Palette,
-  n: NativeBuilder<Message>,
-): Html =>
-  n.view(
-    [n.Key(`detail.${draft.cardId}`), n.Style({ flex: 1 })],
-    [
-      n.view(
-        [
-          n.Style({
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingHorizontal: 16,
-            paddingBottom: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: p.border,
-          }),
-        ],
-        [
-          n.pressable(
-            [
-              n.TestID('detail.back'),
-              n.AccessibilityLabel('Back to board'),
-              n.OnPress(Message.PressedBackToBoard()),
-              n.Style({ paddingVertical: 6, paddingRight: 12 }),
-            ],
-            [
-              n.text(
-                [n.Style({ fontSize: 15, fontWeight: '700', color: p.accent })],
-                ['‹ Board'],
-              ),
-            ],
+  p: Palette
+) =>
+  h.view
+    .key(`detail.${draft.cardId}`)
+    .style({ flex: 1 })
+    .children(
+      h.view
+        .style({
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingHorizontal: 16,
+          paddingBottom: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: p.border
+        })
+        .children(
+          h.pressable
+            .testID("detail.back")
+            .accessibilityLabel("Back to board")
+            .on("press", Msg.PressedBackToBoard())
+            .style({ paddingVertical: 6, paddingRight: 12 })
+            .children(
+              h.text
+                .style({ fontSize: 15, fontWeight: "700", color: p.accent })
+                .children("‹ Board")
+            ),
+          h.text
+            .style({ fontSize: 15, fontWeight: "700", color: p.ink })
+            .children(draft.code),
+          h.pressable
+            .testID("detail.save")
+            .accessibilityLabel("Save card")
+            .on("press", Msg.PressedSaveDraft())
+            .style({
+              paddingHorizontal: 14,
+              paddingVertical: 7,
+              borderRadius: 7,
+              backgroundColor: p.accent
+            })
+            .children(
+              h.text
+                .style({ fontSize: 13, fontWeight: "700", color: p.accentInk })
+                .children("Save")
+            )
+        ),
+      statusBanner.length > 0 &&
+        h.view
+          .style({
+            marginHorizontal: 16,
+            marginTop: 10,
+            padding: 10,
+            borderRadius: 6,
+            backgroundColor: p.accentSoft
+          })
+          .children(
+            h.text
+              .style({ fontSize: 12, fontWeight: "600", color: p.accent })
+              .children(statusBanner)
           ),
-          n.text(
-            [n.Style({ fontSize: 15, fontWeight: '700', color: p.ink })],
-            [draft.code],
-          ),
-          n.pressable(
-            [
-              n.TestID('detail.save'),
-              n.AccessibilityLabel('Save card'),
-              n.OnPress(Message.PressedSaveDraft()),
-              n.Style({
-                paddingHorizontal: 14,
-                paddingVertical: 7,
-                borderRadius: 7,
-                backgroundColor: p.accent,
-              }),
-            ],
-            [
-              n.text(
-                [n.Style({ fontSize: 13, fontWeight: '700', color: p.accentInk })],
-                ['Save'],
-              ),
-            ],
-          ),
-        ],
-      ),
-      statusBanner.length > 0
-        ? n.view(
-            [
-              n.Style({
-                marginHorizontal: 16,
-                marginTop: 10,
-                padding: 10,
-                borderRadius: 6,
-                backgroundColor: p.accentSoft,
-              }),
-            ],
-            [
-              n.text(
-                [n.Style({ fontSize: 12, fontWeight: '600', color: p.accent })],
-                [statusBanner],
-              ),
-            ],
-          )
-        : null,
-      n.scrollView(
-        [n.Style({ flex: 1, paddingHorizontal: 16, paddingTop: 14 })],
-        [
-          n.view(
-            [n.Style({ gap: 14, paddingBottom: 32 })],
-            [
-              n.view(
-                [n.Style({ gap: 6 })],
-                [
-                  n.text(
-                    [n.Style({ fontSize: 11, fontWeight: '700', color: p.inkMuted })],
-                    ['TITLE'],
-                  ),
-                  n.textInput([
-                    n.TestID('detail.title'),
-                    n.Value(draft.title),
-                    n.Placeholder('Card title'),
-                    n.OnChangeText((text) => Message.ChangedDraftTitle({ text })),
-                    n.Style({
+      h.scrollView
+        .style({ flex: 1, paddingHorizontal: 16, paddingTop: 14 })
+        .children(
+          h.view
+            .collapsable(false)
+            .style({ gap: 14, paddingBottom: 32 })
+            .children(
+              h.view
+                .style({ gap: 6 })
+                .children(
+                  h.text
+                    .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
+                    .children("TITLE"),
+                  h.textInput
+                    .testID("detail.title")
+                    .value(draft.title)
+                    .placeholder("Card title")
+                    .on("changeText", ({ text }) => Msg.TypedDraftTitle({ text }))
+                    .style({
                       fontSize: 16,
-                      fontWeight: '600',
+                      fontWeight: "600",
                       padding: 12,
                       borderRadius: 8,
                       borderWidth: 1,
                       borderColor: p.border,
                       backgroundColor: p.surface,
-                      color: p.ink,
-                    }),
-                  ]),
-                ],
-              ),
-              n.view(
-                [n.Style({ gap: 6 })],
-                [
-                  n.text(
-                    [n.Style({ fontSize: 11, fontWeight: '700', color: p.inkMuted })],
-                    ['LANE'],
-                  ),
-                  n.view(
-                    [n.Style({ flexDirection: 'row', gap: 6 })],
-                    LANES.map((lane) => {
-                      const active = draft.lane === lane.id
-                      return n.pressable(
-                        [
-                          n.Key(lane.id),
-                          n.TestID(`detail.lane.${lane.id}`),
-                          n.OnPress(
-                            Message.SelectedDraftLane({ lane: lane.id }),
-                          ),
-                          n.Style({
+                      color: p.ink
+                    })
+                ),
+              h.view
+                .style({ gap: 6 })
+                .children(
+                  h.text
+                    .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
+                    .children("LANE"),
+                  h.view
+                    .style({ flexDirection: "row", gap: 6 })
+                    .children(
+                      LANES.map((lane) => {
+                        const active = draft.lane === lane.id
+                        return h.pressable
+                          .key(lane.id)
+                          .testID(`detail.lane.${lane.id}`)
+                          .on("press", Msg.SelectedDraftLane({ lane: lane.id }))
+                          .style({
                             flex: 1,
                             paddingVertical: 8,
                             borderRadius: 7,
-                            alignItems: 'center',
+                            alignItems: "center",
                             backgroundColor: active ? p.ink : p.surface,
                             borderWidth: 1,
-                            borderColor: active ? p.ink : p.border,
-                          }),
-                        ],
-                        [
-                          n.text(
-                            [
-                              n.Style({
+                            borderColor: active ? p.ink : p.border
+                          })
+                          .children(
+                            h.text
+                              .style({
                                 fontSize: 12,
-                                fontWeight: '700',
-                                color: active ? p.surface : p.ink,
-                              }),
-                            ],
-                            [lane.shortLabel],
-                          ),
-                        ],
-                      )
-                    }),
-                  ),
-                ],
-              ),
-              n.view(
-                [n.Style({ gap: 6 })],
-                [
-                  n.text(
-                    [n.Style({ fontSize: 11, fontWeight: '700', color: p.inkMuted })],
-                    ['PRIORITY'],
-                  ),
-                  n.view(
-                    [n.Style({ flexDirection: 'row', gap: 6 })],
-                    PRIORITIES.map((opt) => {
-                      const active = draft.priority === opt.value
-                      return n.pressable(
-                        [
-                          n.Key(opt.value),
-                          n.TestID(`detail.priority.${opt.value}`),
-                          n.OnPress(
-                            Message.SelectedDraftPriority({
-                              priority: opt.value,
-                            }),
-                          ),
-                          n.Style({
+                                fontWeight: "700",
+                                color: active ? p.surface : p.ink
+                              })
+                              .children(lane.shortLabel)
+                          )
+                      })
+                    )
+                ),
+              h.view
+                .style({ gap: 6 })
+                .children(
+                  h.text
+                    .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
+                    .children("PRIORITY"),
+                  h.view
+                    .style({ flexDirection: "row", gap: 6 })
+                    .children(
+                      PRIORITIES.map((opt) => {
+                        const active = draft.priority === opt.value
+                        return h.pressable
+                          .key(opt.value)
+                          .testID(`detail.priority.${opt.value}`)
+                          .on("press", Msg.SelectedDraftPriority({ priority: opt.value }))
+                          .style({
                             flex: 1,
                             paddingVertical: 8,
                             borderRadius: 7,
-                            alignItems: 'center',
+                            alignItems: "center",
                             backgroundColor: active ? p.accent : p.surface,
                             borderWidth: 1,
-                            borderColor: active ? p.accent : p.border,
-                          }),
-                        ],
-                        [
-                          n.text(
-                            [
-                              n.Style({
+                            borderColor: active ? p.accent : p.border
+                          })
+                          .children(
+                            h.text
+                              .style({
                                 fontSize: 12,
-                                fontWeight: '700',
-                                color: active ? p.accentInk : p.ink,
-                              }),
-                            ],
-                            [opt.label],
-                          ),
-                        ],
-                      )
-                    }),
-                  ),
-                ],
-              ),
-              n.view(
-                [n.Style({ gap: 6 })],
-                [
-                  n.text(
-                    [n.Style({ fontSize: 11, fontWeight: '700', color: p.inkMuted })],
-                    ['STORY POINTS'],
-                  ),
-                  n.view(
-                    [n.Style({ flexDirection: 'row', gap: 6 })],
-                    POINTS.map((pt) => {
-                      const active = draft.points === pt
-                      return n.pressable(
-                        [
-                          n.Key(pt),
-                          n.TestID(`detail.points.${pt}`),
-                          n.OnPress(Message.SelectedDraftPoints({ points: pt })),
-                          n.Style({
+                                fontWeight: "700",
+                                color: active ? p.accentInk : p.ink
+                              })
+                              .children(opt.label)
+                          )
+                      })
+                    )
+                ),
+              h.view
+                .style({ gap: 6 })
+                .children(
+                  h.text
+                    .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
+                    .children("STORY POINTS"),
+                  h.view
+                    .style({ flexDirection: "row", gap: 6 })
+                    .children(
+                      POINTS.map((pt) => {
+                        const active = draft.points === pt
+                        return h.pressable
+                          .key(String(pt))
+                          .testID(`detail.points.${pt}`)
+                          .on("press", Msg.SelectedDraftPoints({ points: pt }))
+                          .style({
                             flex: 1,
                             paddingVertical: 8,
                             borderRadius: 7,
-                            alignItems: 'center',
+                            alignItems: "center",
                             backgroundColor: active ? p.ink : p.surface,
                             borderWidth: 1,
-                            borderColor: active ? p.ink : p.border,
-                          }),
-                        ],
-                        [
-                          n.text(
-                            [
-                              n.Style({
+                            borderColor: active ? p.ink : p.border
+                          })
+                          .children(
+                            h.text
+                              .style({
                                 fontSize: 12,
-                                fontWeight: '700',
-                                color: active ? p.surface : p.ink,
-                              }),
-                            ],
-                            [`${pt}`],
-                          ),
-                        ],
-                      )
-                    }),
-                  ),
-                ],
-              ),
-              n.view(
-                [n.Style({ gap: 6 })],
-                [
-                  n.text(
-                    [n.Style({ fontSize: 11, fontWeight: '700', color: p.inkMuted })],
-                    ['ASSIGNEE'],
-                  ),
-                  n.textInput([
-                    n.TestID('detail.assignee'),
-                    n.Value(draft.assignee),
-                    n.AutoCorrect(false),
-                    n.AutoCapitalize('characters'),
-                    n.OnChangeText((text) =>
-                      Message.ChangedDraftAssignee({ text }),
-                    ),
-                    n.Style({
+                                fontWeight: "700",
+                                color: active ? p.surface : p.ink
+                              })
+                              .children(`${pt}`)
+                          )
+                      })
+                    )
+                ),
+              h.view
+                .style({ gap: 6 })
+                .children(
+                  h.text
+                    .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
+                    .children("ASSIGNEE"),
+                  h.textInput
+                    .testID("detail.assignee")
+                    .value(draft.assignee)
+                    .autoCorrect(false)
+                    .autoCapitalize("characters")
+                    .on("changeText", ({ text }) => Msg.TypedDraftAssignee({ text }))
+                    .style({
                       fontSize: 14,
                       padding: 11,
                       borderRadius: 8,
                       borderWidth: 1,
                       borderColor: p.border,
                       backgroundColor: p.surface,
-                      color: p.ink,
-                    }),
-                  ]),
-                ],
-              ),
-              n.view(
-                [n.Style({ gap: 6 })],
-                [
-                  n.text(
-                    [n.Style({ fontSize: 11, fontWeight: '700', color: p.inkMuted })],
-                    ['NOTES'],
-                  ),
-                  n.textInput([
-                    n.TestID('detail.notes'),
-                    n.Value(draft.notes),
-                    n.Placeholder('Implementation notes...'),
-                    n.OnChangeText((text) => Message.ChangedDraftNotes({ text })),
-                    n.Style({
+                      color: p.ink
+                    })
+                ),
+              h.view
+                .style({ gap: 6 })
+                .children(
+                  h.text
+                    .style({ fontSize: 11, fontWeight: "700", color: p.inkMuted })
+                    .children("NOTES"),
+                  h.textInput
+                    .testID("detail.notes")
+                    .value(draft.notes)
+                    .placeholder("Implementation notes...")
+                    .on("changeText", ({ text }) => Msg.TypedDraftNotes({ text }))
+                    .style({
                       fontSize: 14,
                       padding: 12,
                       minHeight: 80,
@@ -308,34 +260,25 @@ export const detailView = (
                       borderWidth: 1,
                       borderColor: p.border,
                       backgroundColor: p.surface,
-                      color: p.ink,
-                    }),
-                  ]),
-                ],
-              ),
-              n.pressable(
-                [
-                  n.TestID('detail.delete'),
-                  n.AccessibilityLabel('Delete card'),
-                  n.OnPress(Message.PressedDeleteCard({ cardId: draft.cardId })),
-                  n.Style({
-                    paddingVertical: 12,
-                    borderRadius: 8,
-                    backgroundColor: p.accentSoft,
-                    alignItems: 'center',
-                    marginTop: 6,
-                  }),
-                ],
-                [
-                  n.text(
-                    [n.Style({ fontSize: 14, fontWeight: '700', color: p.accent })],
-                    ['Delete Card'],
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    ],
-  )
+                      color: p.ink
+                    })
+                ),
+              h.pressable
+                .testID("detail.delete")
+                .accessibilityLabel("Delete card")
+                .on("press", Msg.PressedDeleteCard({ cardId: draft.cardId }))
+                .style({
+                  paddingVertical: 12,
+                  borderRadius: 8,
+                  backgroundColor: p.accentSoft,
+                  alignItems: "center",
+                  marginTop: 6
+                })
+                .children(
+                  h.text
+                    .style({ fontSize: 14, fontWeight: "700", color: p.accent })
+                    .children("Delete Card")
+                )
+            )
+        )
+    )
