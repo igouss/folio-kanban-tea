@@ -214,20 +214,21 @@ export const makeHost = (doc: Document): WebHostHandle => {
         extra = _exhaustive
       }
     }
-    const next = uiStyleToCss(meta.uiTag, meta.baseStyle, extra)
+    const next: Record<string, string> = {
+      ...uiStyleToCss(meta.uiTag, meta.baseStyle, extra)
+    }
     if (meta.uiTag === "scroll" && meta.horizontal) {
-      ;(next as Record<string, string>)["overflowX"] = "auto"
-      ;(next as Record<string, string>)["overflowY"] = "hidden"
+      next["overflowX"] = "auto"
+      next["overflowY"] = "hidden"
     }
     if (meta.pointer._tag === "Disabled") {
-      ;(next as Record<string, string>)["cursor"] = "not-allowed"
+      next["cursor"] = "not-allowed"
     }
     if (meta.uiTag === "text" && meta.numberOfLines !== undefined) {
-      const mutable = next as Record<string, string>
-      mutable["display"] = "-webkit-box"
-      mutable["webkitLineClamp"] = String(meta.numberOfLines)
-      mutable["webkitBoxOrient"] = "vertical"
-      mutable["overflow"] = "hidden"
+      next["display"] = "-webkit-box"
+      next["webkitLineClamp"] = String(meta.numberOfLines)
+      next["webkitBoxOrient"] = "vertical"
+      next["overflow"] = "hidden"
     }
 
     const styleDecl = el.style as unknown as Record<string, string>
@@ -593,7 +594,10 @@ export const mountEffect = <
 ): Effect.Effect<
   Renderer.Root<Model, Msg>,
   never,
-  Exclude<R | RP, Ui.Host | Renderer.Renderer> | Scope.Scope
+  Exclude<
+    R | RP | Renderer.HostOf<V>,
+    Ui.Host | Renderer.Renderer
+  > | Scope.Scope
 > =>
   Effect.gen(function* () {
     const doc = container.ownerDocument ?? document
@@ -614,5 +618,11 @@ export const mount = <
   component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
   props: Props | Effect.Effect<Props, never, RP>,
   container: globalThis.Element
-): Layer.Layer<never, never, Exclude<R | RP, Ui.Host | Renderer.Renderer>> =>
-  Layer.effectDiscard(mountEffect(component, props, container))
+): Layer.Layer<
+  never,
+  never,
+  Exclude<
+    Exclude<R | RP | Renderer.HostOf<V>, Ui.Host | Renderer.Renderer>,
+    Scope.Scope
+  >
+> => Layer.effectDiscard(mountEffect(component, props, container))

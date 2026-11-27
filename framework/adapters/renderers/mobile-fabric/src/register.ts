@@ -1,5 +1,4 @@
-import type { Component, Renderer, View } from "@effect/ui"
-import type { Ui } from "@universal-ui/core"
+import type { Component, View } from "@effect/ui"
 import type * as Effect from "effect/Effect"
 import type * as Layer from "effect/Layer"
 import {
@@ -15,8 +14,11 @@ import {
   StyleSheet,
   processColor
 } from "react-native"
-import type * as Fabric from "./Fabric.ts"
-import { mountApp, type MountedFabricApp } from "./FabricHost.ts"
+import {
+  mountApp,
+  type FabricAppRequirements,
+  type MountedFabricApp
+} from "./FabricHost.ts"
 import {
   initialRegistrationState,
   transitionRegistration,
@@ -25,11 +27,13 @@ import {
 import { currentConditions, watchConditions } from "./css/conditions.ts"
 import { attachStyles } from "./css/index.ts"
 
-export type RegisterAppOptions<RLayer = never> = Readonly<{
+export type RegisterAppOptions<Required = never> = Readonly<{
   appKey?: string | undefined
   styleSheet?: CssStyleSheet | undefined
-  layer?: Layer.Layer<RLayer> | undefined
-}>
+}> &
+  ([Required] extends [never]
+    ? { readonly layer?: Layer.Layer<never> | undefined }
+    : { readonly layer: Layer.Layer<Required> })
 
 type Registration = { state: RegistrationState }
 
@@ -84,14 +88,15 @@ export const registerApp = <
 >(
   component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
   props: Props | Effect.Effect<Props, never, RP>,
-  {
-    appKey = "main",
-    styleSheet,
-    layer
-  }: RegisterAppOptions<
-    Exclude<R | RP, Fabric.Host | Ui.Host | Renderer.Renderer>
-  > = {}
+  ...rest: [FabricAppRequirements<R, RP, V>] extends [never]
+    ? [options?: RegisterAppOptions<never>]
+    : [options: RegisterAppOptions<FabricAppRequirements<R, RP, V>>]
 ): void => {
+  const { appKey = "main", styleSheet, layer } = (rest[0] ?? {}) as {
+    readonly appKey?: string | undefined
+    readonly styleSheet?: CssStyleSheet | undefined
+    readonly layer?: Layer.Layer<FabricAppRequirements<R, RP, V>> | undefined
+  }
   registerPlatformComponents(Platform.OS)
 
   const apps = registry()
@@ -124,7 +129,16 @@ export const registerApp = <
       component,
       props,
       engine,
-      { platform: Platform.OS, layer }
+      ...([{ platform: Platform.OS, layer }] as unknown as [
+        FabricAppRequirements<R, RP, V>
+      ] extends [never]
+        ? [options?: { readonly platform?: string; readonly layer?: Layer.Layer<never> }]
+        : [
+            options: {
+              readonly platform?: string
+              readonly layer: Layer.Layer<FabricAppRequirements<R, RP, V>>
+            }
+          ])
     )
     const { next, disposeToRun } = transitionRegistration(registration.state, {
       _tag: "Start",

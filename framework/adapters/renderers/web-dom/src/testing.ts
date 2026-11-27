@@ -1,3 +1,5 @@
+export type FakeDomListener = (event: Record<string, unknown>) => void
+
 export interface FakeDomNode {
   readonly nodeType: number
   readonly tagName: string
@@ -10,15 +12,15 @@ export interface FakeDomNode {
   isConnected: boolean
   readonly style: Record<string, string>
   readonly attrs: Map<string, string>
-  readonly listeners: Map<string, Set<(event: any) => void>>
+  readonly listeners: Map<string, Set<FakeDomListener>>
   readonly nextSibling: FakeDomNode | null
   setAttribute(name: string, value: string): void
   getAttribute(name: string): string | null
   removeAttribute(name: string): void
   insertBefore(child: FakeDomNode, ref: FakeDomNode | null): FakeDomNode
   removeChild(child: FakeDomNode): FakeDomNode
-  addEventListener(type: string, listener: (event: any) => void): void
-  removeEventListener(type: string, listener: (event: any) => void): void
+  addEventListener(type: string, listener: FakeDomListener): void
+  removeEventListener(type: string, listener: FakeDomListener): void
   dispatch(type: string, event?: Record<string, unknown>): void
   focus(): void
 }

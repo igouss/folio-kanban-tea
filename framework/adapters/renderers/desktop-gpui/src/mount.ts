@@ -45,7 +45,10 @@ export const mount = <
 ): Effect.Effect<
   Renderer.Root<Model, Msg> & { readonly flush: () => void },
   never,
-  Exclude<R | RP, Gpui.Host | Ui.Host | Renderer.Renderer> | Scope.Scope
+  Exclude<
+    R | RP | Renderer.HostOf<V>,
+    Gpui.Host | Ui.Host | Renderer.Renderer
+  > | Scope.Scope
 > =>
   Effect.gen(function* () {
     const { handle, context } = yield* makeScopedHost(renderer)
@@ -72,7 +75,17 @@ export const run = <
   component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
   props: Props | Effect.Effect<Props, never, RP>,
   windowOptions: WindowOptions
-): Effect.Effect<void, never, Exclude<R | RP, Gpui.Host | Ui.Host | Renderer.Renderer>> =>
+): Effect.Effect<
+  void,
+  never,
+  Exclude<
+    Exclude<
+      R | RP | Renderer.HostOf<V>,
+      Gpui.Host | Ui.Host | Renderer.Renderer
+    >,
+    Scope.Scope
+  >
+> =>
   Effect.scoped(
     Effect.gen(function* () {
       const renderer = createNativeRenderer({
@@ -101,4 +114,4 @@ export const run = <
         })
       })
     })
-  ) as any
+  )

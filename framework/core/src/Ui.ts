@@ -355,12 +355,11 @@ export const mountWithHost = <
 ): Effect.Effect<
   Renderer.Root<Model, Msg>,
   never,
-  Exclude<R | RP, Provided> | Scope.Scope
+  Exclude<
+    R | RP | Renderer.HostOf<V> | Renderer.Renderer | Scope.Scope,
+    Provided
+  >
 > =>
-  (Renderer.mount(
-    component as any,
-    props as any,
-    container
-  ) as Effect.Effect<Renderer.Root<Model, Msg>, never, any>).pipe(
+  Renderer.mount(component, props, container).pipe(
     Effect.provideContext(context)
-  ) as any
+  )

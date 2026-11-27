@@ -6,7 +6,7 @@ import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Fiber from "effect/Fiber"
-import type * as Layer from "effect/Layer"
+import * as Layer from "effect/Layer"
 import * as Scope from "effect/Scope"
 import * as Fabric from "./Fabric.ts"
 import {
@@ -65,11 +65,20 @@ interface EventRecord {
   listeners: Map<string, () => void>
 }
 
-export interface FabricHostOptions<RLayer = any> {
+export interface FabricHostOptions {
   readonly platform?: string | undefined
   readonly requestAnimationFrame?: ((callback: () => void) => void) | undefined
-  readonly layer?: Layer.Layer<RLayer> | undefined
 }
+
+export type FabricAppRequirements<R, RP, V extends View.Elements> = Exclude<
+  R | RP | Renderer.HostOf<V>,
+  Fabric.Host | Ui.Host | Renderer.Renderer
+>
+
+export type FabricMountAppOptions<Required> = FabricHostOptions &
+  ([Required] extends [never]
+    ? { readonly layer?: Layer.Layer<never> | undefined }
+    : { readonly layer: Layer.Layer<Required> })
 
 export interface FabricHostHandle {
   readonly host: Renderer.Host<EngineNode>
@@ -535,19 +544,12 @@ export const mount = <
 ): Effect.Effect<
   Renderer.Root<Model, Msg>,
   never,
-  Exclude<R | RP, Fabric.Host | Ui.Host | Renderer.Renderer> | Scope.Scope
+  FabricAppRequirements<R, RP, V> | Scope.Scope
 > =>
   Effect.gen(function* () {
     const { handle, context } = yield* makeScopedHost(engine, options)
-    const mounted = Ui.mountWithHost(component, props, handle.container, context)
-    return yield* (
-      options.layer !== undefined
-        ? (mounted as Effect.Effect<Renderer.Root<Model, Msg>, never, any>).pipe(
-            Effect.provide(options.layer)
-          )
-        : mounted
-    )
-  }) as any
+    return yield* Ui.mountWithHost(component, props, handle.container, context)
+  })
 
 export const mountApp = <
   Name extends string,
@@ -562,10 +564,13 @@ export const mountApp = <
   component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
   props: Props | Effect.Effect<Props, never, RP>,
   engine: Engine,
-  options: FabricHostOptions<
-    Exclude<R | RP, Fabric.Host | Ui.Host | Renderer.Renderer>
-  > = {}
+  ...rest: [FabricAppRequirements<R, RP, V>] extends [never]
+    ? [options?: FabricMountAppOptions<never>]
+    : [options: FabricMountAppOptions<FabricAppRequirements<R, RP, V>>]
 ): MountedFabricApp<Model, Msg> => {
+  const options = (rest[0] ?? {}) as FabricHostOptions & {
+    readonly layer?: Layer.Layer<FabricAppRequirements<R, RP, V>> | undefined
+  }
   const scope = Effect.runSync(Scope.make())
   let currentRoot: Renderer.Root<Model, Msg> | undefined
   let resolveReady!: (root: Renderer.Root<Model, Msg>) => void
@@ -577,12 +582,18 @@ export const mountApp = <
   // Prevent unhandled rejection warnings if a caller disposes before awaiting `ready`.
   ready.catch(() => {})
 
+  const providedLayer: Layer.Layer<FabricAppRequirements<R, RP, V>> =
+    options.layer ?? (Layer.empty as Layer.Layer<FabricAppRequirements<R, RP, V>>)
+
+  const program: Effect.Effect<Renderer.Root<Model, Msg>> = mount(
+    component,
+    props,
+    engine,
+    options
+  ).pipe(Effect.provide(providedLayer), Scope.provide(scope))
+
   const fiber = Effect.runFork(
-    (
-      mount(component, props, engine, options).pipe(
-        Scope.provide(scope)
-      ) as Effect.Effect<Renderer.Root<Model, Msg>>
-    ).pipe(
+    program.pipe(
       Effect.tap((root) =>
         Effect.sync(() => {
           currentRoot = root
