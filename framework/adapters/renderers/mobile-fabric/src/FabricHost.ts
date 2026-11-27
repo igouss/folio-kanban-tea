@@ -15,9 +15,12 @@ import {
   pressMove,
   pressRelease,
   pressTerminate,
+  readTextFieldFallback,
   touchPoint,
+  transitionTextField,
   type PressGestureState,
   type Size,
+  type TextFieldEvent,
   type TextFieldLifecycle
 } from "./fsm.ts"
 import {
@@ -121,18 +124,51 @@ export const makeHost = (
     return anchor
   }
 
-  const reconcileTextField = (node: EngineNode, field: TextFieldState): void => {
-    if (field.lifecycle._tag !== "Active") return
-    const desired = field.lifecycle.desiredValue
-    if (desired === undefined || field.lifecycle.lastNativeText === desired) return
-    field.lifecycle.lastNativeText = desired
-    engine.dispatchCommand(node, "setTextAndSelection", [
-      field.lifecycle.eventCount,
-      desired,
-      KEEP_SELECTION,
-      KEEP_SELECTION
-    ])
-    engine.remeasure(node)
+  const dispatchTextField = (
+    node: EngineNode,
+    field: TextFieldState,
+    event: TextFieldEvent
+  ): void => {
+    const { next, effects } = transitionTextField(field.lifecycle, event)
+    field.lifecycle = next
+    for (const effect of effects) {
+      switch (effect._tag) {
+        case "SetTextProp":
+          engine.setProp(node, "text", effect.text)
+          break
+        case "SetMostRecentEventCount":
+          engine.setProp(node, "mostRecentEventCount", effect.eventCount)
+          break
+        case "SchedulePostCommitReconcile":
+          postCommitTasks.push(() =>
+            dispatchTextField(node, field, { _tag: "Reconcile" })
+          )
+          break
+        case "EmitChangeText":
+          if (field.handler !== undefined && field.dispatch !== undefined) {
+            field.dispatch("changeText", field.handler, { text: effect.text })
+          }
+          break
+        case "ScheduleFrameReconcile":
+          scheduleFrame(() =>
+            dispatchTextField(node, field, { _tag: "Reconcile" })
+          )
+          break
+        case "DispatchSetTextAndSelection":
+          engine.dispatchCommand(node, "setTextAndSelection", [
+            effect.eventCount,
+            effect.text,
+            KEEP_SELECTION,
+            KEEP_SELECTION
+          ])
+          engine.remeasure(node)
+          break
+        default: {
+          const _exhaustive: never = effect
+          return _exhaustive
+        }
+      }
+    }
   }
 
   const ensureTextField = (node: EngineNode): TextFieldState => {
@@ -145,19 +181,16 @@ export const makeHost = (
       dispose: () => {}
     }
     const stop = engine.setEventListener(node, "topChange", (event) => {
-      if (field.lifecycle._tag !== "Active") return
       const native = (event as { nativeEvent?: { text?: string; eventCount?: number } })
         .nativeEvent
-      const text = native?.text ?? ""
-      field.lifecycle.lastNativeText = text
-      field.lifecycle.eventCount = native?.eventCount ?? field.lifecycle.eventCount + 1
-      if (field.handler !== undefined && field.dispatch !== undefined) {
-        field.dispatch("changeText", field.handler, { text })
-      }
-      scheduleFrame(() => reconcileTextField(node, field))
+      dispatchTextField(node, field, {
+        _tag: "ReceiveNative",
+        text: native?.text ?? "",
+        eventCount: native?.eventCount
+      })
     })
     field.dispose = () => {
-      field.lifecycle = { _tag: "Disposed" }
+      dispatchTextField(node, field, { _tag: "Dispose" })
       stop()
     }
     textFields.set(node, field)
@@ -279,7 +312,7 @@ export const makeHost = (
         return
       }
       if (name === "role") {
-        engine.setProp(node, "accessibilityRole", value === undefined ? null : value)
+        engine.setProp(node, "role", value === undefined ? null : value)
         return
       }
       if (name === "style") {
@@ -304,21 +337,8 @@ export const makeHost = (
       }
       if (name === "value" && node.name === "text-input") {
         const field = ensureTextField(node)
-        if (field.lifecycle._tag !== "Active") return
         const desired = typeof value === "string" ? value : undefined
-        const changed = field.lifecycle.desiredValue !== desired
-        field.lifecycle.desiredValue = desired
-        if (field.lifecycle.lastNativeText === undefined) {
-          field.lifecycle.lastNativeText = desired
-        }
-        if (changed) {
-          engine.setProp(node, "text", desired ?? null)
-        }
-        if (field.lifecycle.writtenEventCount !== field.lifecycle.eventCount) {
-          field.lifecycle.writtenEventCount = field.lifecycle.eventCount
-          engine.setProp(node, "mostRecentEventCount", field.lifecycle.eventCount)
-        }
-        postCommitTasks.push(() => reconcileTextField(node, field))
+        dispatchTextField(node, field, { _tag: "SetDesired", desired })
         return
       }
       engine.setProp(node, name, value === undefined ? null : value)
@@ -435,9 +455,7 @@ export const makeHost = (
                       ? (() => {
                           const lc = textFields.get(node)?.lifecycle
                           const fallback =
-                            lc?._tag === "Active"
-                              ? (lc.lastNativeText ?? lc.desiredValue ?? "")
-                              : ""
+                            lc !== undefined ? readTextFieldFallback(lc) : ""
                           return {
                             text:
                               typeof native["text"] === "string"

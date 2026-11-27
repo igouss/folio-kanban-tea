@@ -1,6 +1,11 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { initialPointerState, transitionPointer } from "../src/fsm.ts"
+import {
+  initialPointerState,
+  transitionPointer,
+  type PointerEvent,
+  type PointerState
+} from "../src/fsm.ts"
 import { uiStyleToCss } from "../src/index.ts"
 
 describe("@universal-ui/host-web", () => {
@@ -46,27 +51,67 @@ describe("@universal-ui/host-web", () => {
     assert.equal(styledBtn["paddingLeft"], "10px")
   })
 
-  it("enforces PointerState FSM transitions and blocks interaction while Disabled", () => {
-    let state = initialPointerState
-    assert.equal(state._tag, "Idle")
+  it("enforces complete PointerState (state, event) transition matrix", () => {
+    assert.deepEqual(initialPointerState, { _tag: "Idle" })
 
-    state = transitionPointer(state, "enter")
-    assert.equal(state._tag, "Hovered")
+    const states: Record<PointerState["_tag"], PointerState> = {
+      Idle: { _tag: "Idle" },
+      Hovered: { _tag: "Hovered" },
+      Pressed: { _tag: "Pressed" },
+      Disabled: { _tag: "Disabled" }
+    }
 
-    state = transitionPointer(state, "down")
-    assert.equal(state._tag, "Pressed")
+    const matrix: Record<
+      PointerState["_tag"],
+      Record<PointerEvent, PointerState["_tag"]>
+    > = {
+      Idle: {
+        enter: "Hovered",
+        leave: "Idle",
+        down: "Pressed",
+        up: "Idle",
+        disable: "Disabled",
+        enable: "Idle"
+      },
+      Hovered: {
+        enter: "Hovered",
+        leave: "Idle",
+        down: "Pressed",
+        up: "Hovered",
+        disable: "Disabled",
+        enable: "Hovered"
+      },
+      Pressed: {
+        enter: "Pressed",
+        leave: "Idle",
+        down: "Pressed",
+        up: "Hovered",
+        disable: "Disabled",
+        enable: "Pressed"
+      },
+      Disabled: {
+        enter: "Disabled",
+        leave: "Disabled",
+        down: "Disabled",
+        up: "Disabled",
+        disable: "Disabled",
+        enable: "Idle"
+      }
+    }
 
-    state = transitionPointer(state, "up")
-    assert.equal(state._tag, "Hovered")
-
-    state = transitionPointer(state, "disable")
-    assert.equal(state._tag, "Disabled")
-
-    // Hover/press while disabled are ignored
-    assert.equal(transitionPointer(state, "enter")._tag, "Disabled")
-    assert.equal(transitionPointer(state, "down")._tag, "Disabled")
-
-    state = transitionPointer(state, "enable")
-    assert.equal(state._tag, "Idle")
+    for (const [stateTag, state] of Object.entries(states) as ReadonlyArray<
+      [PointerState["_tag"], PointerState]
+    >) {
+      for (const [event, expectedTag] of Object.entries(
+        matrix[stateTag]
+      ) as ReadonlyArray<[PointerEvent, PointerState["_tag"]]>) {
+        const next = transitionPointer(state, event)
+        assert.equal(
+          next._tag,
+          expectedTag,
+          `Mismatch for (${stateTag}, ${event})`
+        )
+      }
+    }
   })
 })

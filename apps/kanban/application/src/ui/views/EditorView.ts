@@ -1,4 +1,4 @@
-import type { CardDraft } from "@folio/kanban-domain"
+import { storyPointsFromLabel, type CardDraft } from "@folio/kanban-domain"
 import type { Ui } from "@universal-ui/core"
 import { deriveCardEditorControls } from "../../presentation/index.ts"
 import type { NoticeState } from "../../state/index.ts"
@@ -202,10 +202,10 @@ export const editorView = (
               fieldLabel(h, "Story points", p),
               segmentedControl(h, controls.pointsControl, p, {
                 testIdPrefix: "editor.points",
-                current: String(draft.points),
+                current: `${draft.points}`,
                 stretch: !isModal,
                 onSelect: (value) =>
-                  Msg.SelectedEditPoints({ points: Number(value) })
+                  Msg.SelectedEditPoints({ points: storyPointsFromLabel(value) })
               })
             )
         ),

@@ -23,6 +23,7 @@ import {
 
 import {
   completeInputNudge,
+  detachInputValue,
   initialInputValueState,
   readSubmittedInputValue,
   receiveNativeInputValue,
@@ -52,6 +53,7 @@ export interface GpuiNode extends Gpui.GpuiNodeHandle {
   isInteractive: boolean
   disabled: boolean
   horizontal: boolean
+  numberOfLines: number | undefined
   detached: boolean
 }
 
@@ -114,6 +116,7 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       isInteractive: tag === "button",
       disabled: false,
       horizontal: false,
+      numberOfLines: undefined,
       detached: false
     }
     nodes.set(id, node)
@@ -209,6 +212,10 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
           mutations.flushMutations()
         })
         return
+      default: {
+        const _exhaustive: never = action
+        return _exhaustive
+      }
     }
   }
 
@@ -236,6 +243,9 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
           }
         }
       }
+      if (node.nativeType === "text" && node.numberOfLines !== undefined && out["lineClamp"] === undefined) {
+        out["lineClamp"] = node.numberOfLines
+      }
       if (node.hoverStyle !== undefined) {
         out["hover"] = { ...(out["hover"] as object | undefined), ...node.hoverStyle }
       }
@@ -244,7 +254,7 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       }
       if (
         !node.isInteractive &&
-        node.nativeType === "div" &&
+        (node.nativeType === "div" || node.nativeType === "text") &&
         out["pointerEvents"] === undefined &&
         out["hover"] === undefined &&
         out["active"] === undefined &&
@@ -280,7 +290,7 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
 
   const detachSubtree = (node: GpuiNode): void => {
     node.detached = true
-    node.inputValue = { _tag: "Detached" }
+    node.inputValue = detachInputValue(node.inputValue)
     unregisterEventHandlers(eventHandlers, node.id)
     node.nativeListeners.clear()
     dirtyStyleNodes.delete(node)
@@ -332,6 +342,7 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
         isInteractive: false,
         disabled: false,
         horizontal: false,
+        numberOfLines: undefined,
         detached: false
       }
     },
@@ -366,6 +377,11 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       if (name === "horizontal") {
         node.horizontal = Boolean(value)
         node.ownStyle = normalizeGpuiStyle(node.tag, node.rawStyle, node.horizontal)
+        dirtyStyleNodes.add(node)
+        return
+      }
+      if (name === "numberOfLines") {
+        node.numberOfLines = typeof value === "number" ? value : undefined
         dirtyStyleNodes.add(node)
         return
       }

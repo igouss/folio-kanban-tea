@@ -32,11 +32,15 @@ export {
 export {
   COMPACT_BREAKPOINT_PX,
   CardDensity,
+  IDLE_WORKSPACE_MODE,
   KanbanStateSchema,
+  NonEmptyTextSchema,
   NoticeStateSchema,
   NoticeTone,
   WorkspaceModeSchema,
   initialState,
+  makeVisibleNotice,
+  parseNonEmptyText,
   reduce,
   selectActiveLane,
   selectBackgroundTrips,
@@ -53,16 +57,20 @@ export {
   selectTheme,
   selectViewport,
   selectWorkspaceMode,
+  transitionWorkspaceMode,
   type AppEffect,
   type BoardScreenSnapshot,
   type InitialStateParams,
   type KanbanAction,
   type KanbanState,
+  type NonEmptyText,
   type NoticeState,
   type ReduceContext,
   type ReduceResult,
   type ScreenLayout,
-  type WorkspaceMode
+  type WorkspaceMode,
+  type WorkspaceModeEvent,
+  type WorkspaceModeTransition
 } from "./state/index.ts"
 export {
   FolioApp,

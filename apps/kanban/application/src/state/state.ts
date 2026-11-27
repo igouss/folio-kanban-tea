@@ -2,6 +2,7 @@ import { DEFAULT_CARDS, emptyHistory } from "@folio/kanban-domain"
 import {
   BoardHistorySchema,
   CardDraftSchema,
+  CardTitleSchema,
   KanbanCardSchema,
   LaneId,
   PriorityFilter,
@@ -19,6 +20,24 @@ import * as Schema from "effect/Schema"
 export const CardDensity = Schema.Literals(["comfortable", "compact"])
 export type CardDensity = typeof CardDensity.Type
 
+export const InspectorVisibility = Schema.Literals(["closed", "open"])
+export type InspectorVisibility = typeof InspectorVisibility.Type
+
+const PositiveRequestIdSchema = Schema.Int.pipe(
+  Schema.check(Schema.isGreaterThan(0))
+)
+
+export const NonEmptyTextSchema = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed()),
+  Schema.brand("NonEmptyText")
+)
+export type NonEmptyText = typeof NonEmptyTextSchema.Type
+
+export const parseNonEmptyText = (raw: string): NonEmptyText | undefined => {
+  const trimmed = raw.trim()
+  return trimmed.length > 0 ? (trimmed as NonEmptyText) : undefined
+}
+
 const WorkspaceIdleSchema = Schema.Struct({
   _tag: Schema.Literal("Idle")
 })
@@ -31,8 +50,9 @@ const WorkspaceComposingSchema = Schema.Struct({
 
 const WorkspaceSubmittingCardSchema = Schema.Struct({
   _tag: Schema.Literal("SubmittingCard"),
+  requestId: PositiveRequestIdSchema,
   lane: LaneId,
-  title: Schema.String
+  title: CardTitleSchema
 })
 
 const WorkspaceEditingCardSchema = Schema.Struct({
@@ -58,8 +78,8 @@ const NoticeHiddenSchema = Schema.Struct({
 const NoticeVisibleSchema = Schema.Struct({
   _tag: Schema.Literal("Visible"),
   tone: NoticeTone,
-  message: Schema.String,
-  announcement: Schema.String
+  message: NonEmptyTextSchema,
+  announcement: NonEmptyTextSchema
 })
 
 export const NoticeStateSchema = Schema.Union([
@@ -67,6 +87,28 @@ export const NoticeStateSchema = Schema.Union([
   NoticeVisibleSchema
 ])
 export type NoticeState = typeof NoticeStateSchema.Type
+
+/**
+ * Total constructor for visible notices. Returns `Hidden` if `message` is blank,
+ * making empty visible banners unconstructible at both compile time and runtime.
+ */
+export const makeVisibleNotice = (
+  tone: NoticeTone,
+  message: string,
+  announcement = message
+): NoticeState => {
+  const parsedMessage = parseNonEmptyText(message)
+  if (parsedMessage === undefined) {
+    return { _tag: "Hidden" }
+  }
+  const parsedAnnouncement = parseNonEmptyText(announcement) ?? parsedMessage
+  return {
+    _tag: "Visible",
+    tone,
+    message: parsedMessage,
+    announcement: parsedAnnouncement
+  }
+}
 
 export const BoardSliceSchema = Schema.Struct({
   cards: Schema.Array(KanbanCardSchema),
@@ -80,7 +122,8 @@ export const WorkspaceSliceSchema = Schema.Struct({
   searchQuery: Schema.String,
   priorityFilter: PriorityFilter,
   density: CardDensity,
-  mode: WorkspaceModeSchema
+  mode: WorkspaceModeSchema,
+  nextRequestId: PositiveRequestIdSchema
 })
 export type WorkspaceSlice = typeof WorkspaceSliceSchema.Type
 
@@ -89,7 +132,7 @@ export const ShellSliceSchema = Schema.Struct({
   lifecycle: LifecycleState,
   backgroundTrips: Schema.Number,
   notice: NoticeStateSchema,
-  inspectorOpen: Schema.Boolean,
+  inspector: InspectorVisibility,
   traceEntries: Schema.Array(Schema.String),
   dispatchCount: Schema.Number
 })
@@ -125,14 +168,15 @@ export const initialState = (params: InitialStateParams): KanbanState => {
       searchQuery: "",
       priorityFilter: "all",
       density: "comfortable",
-      mode: { _tag: "Idle" }
+      mode: { _tag: "Idle" },
+      nextRequestId: 1
     },
     shell: {
       viewport: params.initialViewport,
       lifecycle: "active",
       backgroundTrips: 0,
       notice: { _tag: "Hidden" },
-      inspectorOpen: false,
+      inspector: "closed",
       traceEntries: [],
       dispatchCount: 0
     }

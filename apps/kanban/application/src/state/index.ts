@@ -27,13 +27,24 @@ export {
 } from "./selectors.ts"
 export {
   CardDensity,
+  InspectorVisibility,
   KanbanStateSchema,
+  NonEmptyTextSchema,
   NoticeStateSchema,
   NoticeTone,
   WorkspaceModeSchema,
   initialState,
+  makeVisibleNotice,
+  parseNonEmptyText,
   type InitialStateParams,
   type KanbanState,
+  type NonEmptyText,
   type NoticeState,
   type WorkspaceMode
 } from "./state.ts"
+export {
+  IDLE_WORKSPACE_MODE,
+  transitionWorkspaceMode,
+  type WorkspaceModeEvent,
+  type WorkspaceModeTransition
+} from "./workspaceMode.ts"

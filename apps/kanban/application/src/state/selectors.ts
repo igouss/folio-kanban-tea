@@ -67,7 +67,7 @@ export const selectDispatchCount = (state: KanbanState): number =>
   state.shell.dispatchCount
 
 export const selectInspectorOpen = (state: KanbanState): boolean =>
-  state.shell.inspectorOpen
+  state.shell.inspector === "open"
 
 export const selectLifecycle = (state: KanbanState): LifecycleState =>
   state.shell.lifecycle
@@ -108,7 +108,7 @@ export const selectBoardScreen = (state: KanbanState): BoardScreenSnapshot => {
       shell.backgroundTrips > 0
         ? `@effect/ui · ${shell.lifecycle} (${shell.backgroundTrips})`
         : `@effect/ui · ${shell.lifecycle}`,
-    inspectorOpen: shell.inspectorOpen,
+    inspectorOpen: shell.inspector === "open",
     traceEntries: shell.traceEntries,
     dispatchCount: shell.dispatchCount
   }

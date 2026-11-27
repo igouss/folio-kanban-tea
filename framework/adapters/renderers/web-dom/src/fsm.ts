@@ -18,22 +18,78 @@ export type PointerEvent =
 
 export const initialPointerState: PointerState = { _tag: "Idle" }
 
+const exhaustiveEvent = (event: never): PointerState => event
+
 export const transitionPointer = (
   state: PointerState,
   event: PointerEvent
 ): PointerState => {
-  switch (event) {
-    case "disable":
-      return { _tag: "Disabled" }
-    case "enable":
-      return state._tag === "Disabled" ? { _tag: "Idle" } : state
-    case "enter":
-      return state._tag === "Idle" ? { _tag: "Hovered" } : state
-    case "leave":
-      return state._tag === "Disabled" ? state : { _tag: "Idle" }
-    case "down":
-      return state._tag === "Disabled" ? state : { _tag: "Pressed" }
-    case "up":
-      return state._tag === "Pressed" ? { _tag: "Hovered" } : state
+  switch (state._tag) {
+    case "Idle":
+      switch (event) {
+        case "enter":
+          return { _tag: "Hovered" }
+        case "down":
+          return { _tag: "Pressed" }
+        case "disable":
+          return { _tag: "Disabled" }
+        case "leave":
+        case "up":
+        case "enable":
+          return state
+        default:
+          return exhaustiveEvent(event)
+      }
+
+    case "Hovered":
+      switch (event) {
+        case "leave":
+          return { _tag: "Idle" }
+        case "down":
+          return { _tag: "Pressed" }
+        case "disable":
+          return { _tag: "Disabled" }
+        case "enter":
+        case "up":
+        case "enable":
+          return state
+        default:
+          return exhaustiveEvent(event)
+      }
+
+    case "Pressed":
+      switch (event) {
+        case "up":
+          return { _tag: "Hovered" }
+        case "leave":
+          return { _tag: "Idle" }
+        case "disable":
+          return { _tag: "Disabled" }
+        case "enter":
+        case "down":
+        case "enable":
+          return state
+        default:
+          return exhaustiveEvent(event)
+      }
+
+    case "Disabled":
+      switch (event) {
+        case "enable":
+          return { _tag: "Idle" }
+        case "enter":
+        case "leave":
+        case "down":
+        case "up":
+        case "disable":
+          return state
+        default:
+          return exhaustiveEvent(event)
+      }
+
+    default: {
+      const _exhaustive: never = state
+      return _exhaustive
+    }
   }
 }

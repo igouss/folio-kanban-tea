@@ -1,10 +1,13 @@
 import { Command, Head, Subscription, UiSchema, type Component } from "@effect/ui"
 import { BoardRepository, loadInitialBoard } from "@folio/kanban-domain/ports"
 import {
+  CardIdSchema,
+  CardTitleSchema,
   LaneId,
   Priority,
   PriorityFilter,
-  SavedBoardSchema
+  SavedBoardSchema,
+  StoryPoints
 } from "@folio/kanban-domain/schema"
 import {
   Lifecycle,
@@ -14,7 +17,11 @@ import {
   ViewportMetricsSchema
 } from "@universal-ui/core"
 import { Effect, Schema, Stream } from "effect"
-import { MintCardMeta, SaveBoard } from "../commands/index.ts"
+import {
+  MintCardMeta,
+  PositiveRequestIdSchema,
+  SaveBoard
+} from "../commands/index.ts"
 import {
   CardDensity,
   KanbanStateSchema,
@@ -71,22 +78,23 @@ export const FolioAppMessage = UiSchema.TaggedEnum({
   TypedQuickTitle: { text: Schema.String },
   SubmittedQuickCard: {},
   CompletedMintCard: {
-    id: Schema.String,
+    requestId: PositiveRequestIdSchema,
+    id: CardIdSchema,
     createdAt: Schema.String,
-    title: Schema.String,
+    title: CardTitleSchema,
     lane: LaneId,
     tag: Schema.String
   },
   CancelledQuickCard: {},
-  ClickedMoveCard: { cardId: Schema.String, toLane: LaneId },
-  ClickedDeleteCard: { cardId: Schema.String },
-  ClickedOpenEditor: { cardId: Schema.String },
+  ClickedMoveCard: { cardId: CardIdSchema, toLane: LaneId },
+  ClickedDeleteCard: { cardId: CardIdSchema },
+  ClickedOpenEditor: { cardId: CardIdSchema },
   TypedEditTitle: { text: Schema.String },
   TypedEditNotes: { text: Schema.String },
   TypedEditAssignee: { text: Schema.String },
   SelectedEditLane: { lane: LaneId },
   SelectedEditPriority: { priority: Priority },
-  SelectedEditPoints: { points: Schema.Number },
+  SelectedEditPoints: { points: StoryPoints },
   SubmittedEditCard: {},
   CancelledEditCard: {},
   ClickedResetDemo: {},
@@ -122,6 +130,7 @@ const runReducer = (
       case "MintCardMeta":
         step = step.run(
           MintCardMeta.make({
+            requestId: effect.requestId,
             title: effect.title,
             lane: effect.lane,
             tag: effect.tag
@@ -131,6 +140,10 @@ const runReducer = (
       case "ViewTransition":
         step = step.viewTransition(effect.names)
         break
+      default: {
+        const _exhaustive: never = effect
+        return _exhaustive
+      }
     }
   }
   return step

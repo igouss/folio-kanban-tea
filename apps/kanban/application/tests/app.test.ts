@@ -2,7 +2,13 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import { Component } from "@effect/ui"
 import { Story, TestHost } from "@effect/ui/testing"
-import { cardsInLane } from "@folio/kanban-domain"
+import {
+  cardsInLane,
+  parseCardId,
+  parseCardTitle,
+  type CardId,
+  type CardTitle
+} from "@folio/kanban-domain"
 import {
   loadInitialBoard,
   makeMemoryBoardRepository
@@ -34,6 +40,18 @@ import {
   selectViewport,
   selectWorkspaceMode
 } from "../src/index.ts"
+
+const mustCardId = (raw: string): CardId => {
+  const parsed = parseCardId(raw)
+  assert.ok(parsed !== undefined)
+  return parsed
+}
+
+const mustCardTitle = (raw: string): CardTitle => {
+  const parsed = parseCardTitle(raw)
+  assert.ok(parsed !== undefined)
+  return parsed
+}
 
 const desktopTestProps = {
   runtimeTag: "web",
@@ -71,9 +89,10 @@ describe("@folio/kanban-app (Thin @effect/ui Shell over Pure Reducer)", () => {
           assert.equal(selectWorkspaceMode(s.model)._tag, "SubmittingCard")
           pending
             .resolve(MintCardMeta, {
-              id: "web-card-1",
+              requestId: 1,
+              id: mustCardId("web-card-1"),
               createdAt: "2026-11-27T00:00:00.000Z",
-              title: "Unified cross-platform app",
+              title: mustCardTitle("Unified cross-platform app"),
               lane: "backlog",
               tag: "web"
             })

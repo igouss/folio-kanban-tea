@@ -14,7 +14,9 @@ import {
   type LaneMeta,
   type LaneStats,
   type Priority,
-  type PriorityFilter
+  type PriorityFilter,
+  type StoryPoints,
+  type StoryPointsLabel
 } from "@folio/kanban-domain"
 import {
   readProgress,
@@ -177,7 +179,7 @@ export interface DeriveCardEditorControlsOptions {
   readonly idPrefix: string
   readonly lane: LaneId
   readonly priority: Priority
-  readonly points: number
+  readonly points: StoryPoints
   readonly useShortLaneLabels?: boolean
   readonly pointsSuffix?: string
 }
@@ -185,7 +187,7 @@ export interface DeriveCardEditorControlsOptions {
 export interface CardEditorControlsSnapshot {
   readonly laneControl: SegmentedControlSnapshot<LaneId>
   readonly priorityControl: SegmentedControlSnapshot<Priority>
-  readonly pointsControl: SegmentedControlSnapshot<string>
+  readonly pointsControl: SegmentedControlSnapshot<StoryPointsLabel>
 }
 
 export const deriveCardEditorControls = (
@@ -216,12 +218,12 @@ export const deriveCardEditorControls = (
       ariaLabel: "Priority",
       items: PRIORITY_OPTIONS
     }),
-    pointsControl: readSegmentedControl({
+    pointsControl: readSegmentedControl<StoryPointsLabel>({
       id: `${idPrefix}-editor-points`,
-      value: String(points),
+      value: `${points}`,
       ariaLabel: "Story points",
       items: STORY_POINTS.map((pt) => ({
-        value: String(pt),
+        value: `${pt}`,
         label: `${pt}${pointsSuffix}`
       }))
     })

@@ -17,6 +17,11 @@ import {
 } from "react-native"
 import type * as Fabric from "./Fabric.ts"
 import { mountApp, type MountedFabricApp } from "./FabricHost.ts"
+import {
+  initialRegistrationState,
+  transitionRegistration,
+  type RegistrationState
+} from "./fsm.ts"
 import { currentConditions, watchConditions } from "./css/conditions.ts"
 import { attachStyles } from "./css/index.ts"
 
@@ -25,14 +30,6 @@ export type RegisterAppOptions<RLayer = never> = Readonly<{
   styleSheet?: CssStyleSheet | undefined
   layer?: Layer.Layer<RLayer> | undefined
 }>
-
-type RegistrationState =
-  | { readonly _tag: "Stopped" }
-  | {
-      readonly _tag: "Running"
-      readonly surfaceId: number
-      readonly dispose: () => void
-    }
 
 type Registration = { state: RegistrationState }
 
@@ -50,10 +47,11 @@ const registry = (): Registry => {
 }
 
 const stop = (registration: Registration): void => {
-  if (registration.state._tag !== "Running") return
-  const { dispose } = registration.state
-  registration.state = { _tag: "Stopped" }
-  dispose()
+  const { next, disposeToRun } = transitionRegistration(registration.state, {
+    _tag: "Stop"
+  })
+  registration.state = next
+  disposeToRun?.()
 }
 
 const installStopSurface = (apps: Registry): void => {
@@ -63,12 +61,12 @@ const installStopSurface = (apps: Registry): void => {
   const previousStopSurface = host.RN$stopSurface
   host.RN$stopSurface = (surfaceId) => {
     apps.apps.forEach((registration) => {
-      if (
-        registration.state._tag === "Running" &&
-        registration.state.surfaceId === surfaceId
-      ) {
-        stop(registration)
-      }
+      const { next, disposeToRun } = transitionRegistration(
+        registration.state,
+        { _tag: "StopSurface", surfaceId }
+      )
+      registration.state = next
+      disposeToRun?.()
     })
     previousStopSurface?.(surfaceId)
   }
@@ -98,7 +96,9 @@ export const registerApp = <
 
   const apps = registry()
   installStopSurface(apps)
-  const registration = apps.apps.get(appKey) ?? { state: { _tag: "Stopped" } }
+  const registration = apps.apps.get(appKey) ?? {
+    state: initialRegistrationState
+  }
   apps.apps.set(appKey, registration)
 
   const start = (surfaceId: number): void => {
@@ -126,14 +126,16 @@ export const registerApp = <
       engine,
       { platform: Platform.OS, layer }
     )
-    registration.state = {
-      _tag: "Running",
+    const { next, disposeToRun } = transitionRegistration(registration.state, {
+      _tag: "Start",
       surfaceId,
       dispose: () => {
         unwatch()
         mounted.dispose()
       }
-    }
+    })
+    registration.state = next
+    disposeToRun?.()
   }
 
   AppRegistry.registerRunnable(

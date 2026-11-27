@@ -1,9 +1,18 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { cardsInLane } from "@folio/kanban-domain"
-import * as Option from "effect/Option"
 import {
+  cardsInLane,
+  parseCardId,
+  parseCardTitle,
+  type CardId,
+  type CardTitle
+} from "@folio/kanban-domain"
+import * as Option from "effect/Option"
+import * as Schema from "effect/Schema"
+import {
+  NoticeStateSchema,
   initialState,
+  makeVisibleNotice,
   reduce,
   selectBackgroundTrips,
   selectBoardScreen,
@@ -15,6 +24,18 @@ import {
   selectTheme,
   selectWorkspaceMode
 } from "../src/state/index.ts"
+
+const mustCardId = (raw: string): CardId => {
+  const parsed = parseCardId(raw)
+  assert.ok(parsed !== undefined)
+  return parsed
+}
+
+const mustCardTitle = (raw: string): CardTitle => {
+  const parsed = parseCardTitle(raw)
+  assert.ok(parsed !== undefined)
+  return parsed
+}
 
 const ctx = { runtimeTag: "cli" } as const
 
@@ -59,14 +80,16 @@ describe("@folio/kanban-app pure reducer (zero @effect/ui runtime)", () => {
     const mintedReq = reduce(state, { _tag: "SubmittedQuickCard" }, ctx)
     assert.deepEqual(selectWorkspaceMode(mintedReq.state), {
       _tag: "SubmittingCard",
+      requestId: 1,
       lane: "backlog",
-      title: "Pure reducer test"
+      title: mustCardTitle("Pure reducer test")
     })
     assert.deepEqual(selectNotice(mintedReq.state), { _tag: "Hidden" })
     assert.deepEqual(mintedReq.effects, [
       {
         _tag: "MintCardMeta",
-        title: "Pure reducer test",
+        requestId: 1,
+        title: mustCardTitle("Pure reducer test"),
         lane: "backlog",
         tag: "cli"
       }
@@ -86,9 +109,10 @@ describe("@folio/kanban-app pure reducer (zero @effect/ui runtime)", () => {
       mintedReq.state,
       {
         _tag: "CompletedMintCard",
-        id: "cli-card-1",
+        requestId: 1,
+        id: mustCardId("cli-card-1"),
         createdAt: "2026-11-27T12:00:00.000Z",
-        title: "Pure reducer test",
+        title: mustCardTitle("Pure reducer test"),
         lane: "backlog",
         tag: "cli"
       },
@@ -119,7 +143,7 @@ describe("@folio/kanban-app pure reducer (zero @effect/ui runtime)", () => {
     // Composing -> Opening editor closes composer and enters EditingCard
     state = reduce(state, { _tag: "ClickedStartAddCard", lane: "backlog" }, ctx).state
     state = reduce(state, { _tag: "TypedQuickTitle", text: "Draft title" }, ctx).state
-    state = reduce(state, { _tag: "ClickedOpenEditor", cardId: "card-101" }, ctx).state
+    state = reduce(state, { _tag: "ClickedOpenEditor", cardId: mustCardId("card-101") }, ctx).state
     assert.equal(selectWorkspaceMode(state)._tag, "EditingCard")
 
     // Quick-title typing while EditingCard is ignored
@@ -153,19 +177,32 @@ describe("@folio/kanban-app pure reducer (zero @effect/ui runtime)", () => {
     })
     assert.deepEqual(selectNotice(state), { _tag: "Hidden" })
 
-    // Cancelling while SubmittingCard returns to Idle and ignores stale CompletedMintCard
+    // Cancelling attempt #1 while SubmittingCard and starting attempt #2 ignores stale attempt #1 completion
     state = reduce(state, { _tag: "TypedQuickTitle", text: "Cancel mid-flight" }, ctx).state
     state = reduce(state, { _tag: "SubmittedQuickCard" }, ctx).state
     assert.equal(selectWorkspaceMode(state)._tag, "SubmittingCard")
     state = reduce(state, { _tag: "CancelledQuickCard" }, ctx).state
     assert.deepEqual(selectWorkspaceMode(state), { _tag: "Idle" })
+
+    // Start second attempt (requestId: 2)
+    state = reduce(state, { _tag: "ClickedStartAddCard", lane: "backlog" }, ctx).state
+    state = reduce(state, { _tag: "TypedQuickTitle", text: "Second submit" }, ctx).state
+    state = reduce(state, { _tag: "SubmittedQuickCard" }, ctx).state
+    const secondMode = selectWorkspaceMode(state)
+    assert.equal(secondMode._tag, "SubmittingCard")
+    if (secondMode._tag === "SubmittingCard") {
+      assert.equal(secondMode.requestId, 2)
+    }
+
+    // Stale completion from attempt #1 cannot complete attempt #2
     const stale = reduce(
       state,
       {
         _tag: "CompletedMintCard",
-        id: "cli-stale-1",
+        requestId: 1,
+        id: mustCardId("cli-stale-1"),
         createdAt: "2026-11-27T12:00:00.000Z",
-        title: "Cancel mid-flight",
+        title: mustCardTitle("Cancel mid-flight"),
         lane: "review",
         tag: "cli"
       },
@@ -173,6 +210,45 @@ describe("@folio/kanban-app pure reducer (zero @effect/ui runtime)", () => {
     )
     assert.equal(selectCards(stale.state).length, 8)
     assert.equal(stale.effects.length, 0)
+    assert.equal(selectWorkspaceMode(stale.state)._tag, "SubmittingCard")
+
+    // Matching completion for attempt #2 succeeds
+    const accepted = reduce(
+      stale.state,
+      {
+        _tag: "CompletedMintCard",
+        requestId: 2,
+        id: mustCardId("cli-fresh-2"),
+        createdAt: "2026-11-27T12:00:01.000Z",
+        title: mustCardTitle("Second submit"),
+        lane: "backlog",
+        tag: "cli"
+      },
+      ctx
+    )
+    assert.equal(selectCards(accepted.state).length, 9)
+    assert.deepEqual(selectWorkspaceMode(accepted.state), { _tag: "Idle" })
+  })
+
+  it("rejects empty visible notices via NoticeStateSchema and makeVisibleNotice", () => {
+    assert.deepEqual(makeVisibleNotice("info", ""), { _tag: "Hidden" })
+    assert.deepEqual(makeVisibleNotice("error", "   "), { _tag: "Hidden" })
+    assert.throws(() =>
+      Schema.decodeUnknownSync(NoticeStateSchema)({
+        _tag: "Visible",
+        tone: "info",
+        message: "",
+        announcement: "Valid"
+      })
+    )
+    assert.throws(() =>
+      Schema.decodeUnknownSync(NoticeStateSchema)({
+        _tag: "Visible",
+        tone: "error",
+        message: "Valid",
+        announcement: "   "
+      })
+    )
   })
 
   it("handles move transitions, theme toggle, undo/redo, responsive layout, and lifecycle trips", () => {
@@ -182,7 +258,7 @@ describe("@folio/kanban-app pure reducer (zero @effect/ui runtime)", () => {
     // Move card emits PersistBoard + ViewTransition and sets info notice with transfer announcement
     const moved = reduce(
       state,
-      { _tag: "ClickedMoveCard", cardId: "card-101", toLane: "review" },
+      { _tag: "ClickedMoveCard", cardId: mustCardId("card-101"), toLane: "review" },
       ctx
     )
     assert.deepEqual(

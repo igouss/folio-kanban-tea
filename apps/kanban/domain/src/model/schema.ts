@@ -1,5 +1,12 @@
 import { Schema } from "effect"
-import { LANE_IDS, PRIORITIES, PRIORITY_FILTERS, THEME_MODES } from "./types.ts"
+import {
+  CARD_TITLE_MIN_LENGTH,
+  LANE_IDS,
+  PRIORITIES,
+  PRIORITY_FILTERS,
+  STORY_POINTS,
+  THEME_MODES
+} from "./types.ts"
 
 export const LaneId = Schema.Literals(LANE_IDS)
 export type LaneId = typeof LaneId.Type
@@ -13,40 +20,55 @@ export type PriorityFilter = typeof PriorityFilter.Type
 export const ThemeMode = Schema.Literals(THEME_MODES)
 export type ThemeMode = typeof ThemeMode.Type
 
+export const StoryPoints = Schema.Literals(STORY_POINTS)
+export type StoryPoints = typeof StoryPoints.Type
+
+export const CardIdSchema = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed()),
+  Schema.brand("CardId")
+)
+export type CardId = typeof CardIdSchema.Type
+
+export const CardTitleSchema = Schema.String.pipe(
+  Schema.check(Schema.isTrimmed(), Schema.isMinLength(CARD_TITLE_MIN_LENGTH)),
+  Schema.brand("CardTitle")
+)
+export type CardTitle = typeof CardTitleSchema.Type
+
 export const KanbanCardSchema = Schema.Struct({
-  id: Schema.String,
+  id: CardIdSchema,
   code: Schema.String,
-  title: Schema.String,
+  title: CardTitleSchema,
   notes: Schema.String,
   lane: LaneId,
   priority: Priority,
   assignee: Schema.String,
-  points: Schema.Number,
+  points: StoryPoints,
   tags: Schema.Array(Schema.String),
   createdAt: Schema.String
 })
 export type KanbanCardSchema = typeof KanbanCardSchema.Type
 
 export const NewCardInputSchema = Schema.Struct({
-  title: Schema.String,
+  title: CardTitleSchema,
   notes: Schema.String,
   lane: LaneId,
   priority: Priority,
   assignee: Schema.String,
-  points: Schema.Number,
+  points: StoryPoints,
   tags: Schema.Array(Schema.String)
 })
 export type NewCardInputSchema = typeof NewCardInputSchema.Type
 
 export const CardDraftSchema = Schema.Struct({
-  cardId: Schema.String,
+  cardId: CardIdSchema,
   code: Schema.String,
   title: Schema.String,
   notes: Schema.String,
   lane: LaneId,
   priority: Priority,
   assignee: Schema.String,
-  points: Schema.Number
+  points: StoryPoints
 })
 export type CardDraftSchema = typeof CardDraftSchema.Type
 

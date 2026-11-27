@@ -209,6 +209,10 @@ export const makeHost = (doc: Document): WebHostHandle => {
       case "Disabled":
         extra = undefined
         break
+      default: {
+        const _exhaustive: never = meta.pointer
+        extra = _exhaustive
+      }
     }
     const next = uiStyleToCss(meta.uiTag, meta.baseStyle, extra)
     if (meta.uiTag === "scroll" && meta.horizontal) {

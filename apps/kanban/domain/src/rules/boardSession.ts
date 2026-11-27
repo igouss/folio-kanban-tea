@@ -13,6 +13,8 @@ import {
 import type {
   BoardHistoryState,
   CardDraft,
+  CardId,
+  CardTitle,
   KanbanCard,
   LaneId,
 } from '../model/types.ts'
@@ -81,12 +83,52 @@ export interface BoardSessionSlice {
   readonly history: BoardHistoryState
 }
 
+export const applyCreateValidatedCard = (
+  session: BoardSessionSlice,
+  params: {
+    readonly title: CardTitle
+    readonly lane: LaneId
+    readonly id: CardId
+    readonly tag: string
+    readonly createdAt: string
+  },
+): {
+  readonly card: KanbanCard
+  readonly cards: ReadonlyArray<KanbanCard>
+  readonly history: BoardHistoryState
+  readonly laneName: string
+} => {
+  const created = createCard(
+    session.cards,
+    {
+      title: params.title,
+      notes: '',
+      lane: params.lane,
+      priority: 'medium',
+      assignee: 'ME',
+      points: 2,
+      tags: [params.tag],
+    },
+    {
+      id: params.id,
+      createdAt: params.createdAt,
+    },
+  )
+
+  return {
+    card: created.card,
+    cards: created.cards,
+    history: recordHistory(session.history, session.cards),
+    laneName: laneTitle(params.lane),
+  }
+}
+
 export const applyQuickCreate = (
   session: BoardSessionSlice,
   params: {
     readonly title: string
     readonly lane: LaneId
-    readonly id: string
+    readonly id: CardId
     readonly tag: string
     readonly createdAt: string
     readonly minTitleLength?: number
@@ -103,35 +145,21 @@ export const applyQuickCreate = (
   const check = validateCardTitle(params.title, params.minTitleLength ?? 2)
   if (!check.ok) return check
 
-  const created = createCard(
-    session.cards,
-    {
-      title: check.title,
-      notes: '',
-      lane: params.lane,
-      priority: 'medium',
-      assignee: 'ME',
-      points: 2,
-      tags: [params.tag],
-    },
-    {
-      id: params.id,
-      createdAt: params.createdAt,
-    },
-  )
-
   return {
     ok: true,
-    card: created.card,
-    cards: created.cards,
-    history: recordHistory(session.history, session.cards),
-    laneName: laneTitle(params.lane),
+    ...applyCreateValidatedCard(session, {
+      title: check.title,
+      lane: params.lane,
+      id: params.id,
+      tag: params.tag,
+      createdAt: params.createdAt,
+    }),
   }
 }
 
 export const applyMoveCard = (
   session: BoardSessionSlice,
-  cardId: string,
+  cardId: CardId,
   toLane: LaneId,
 ):
   | {
@@ -157,7 +185,7 @@ export const applyMoveCard = (
 
 export const applyDeleteCard = (
   session: BoardSessionSlice,
-  cardId: string,
+  cardId: CardId,
 ):
   | {
       readonly card: KanbanCard
@@ -170,6 +198,33 @@ export const applyDeleteCard = (
   return {
     card: existing,
     cards: deleteCard(session.cards, cardId),
+    history: recordHistory(session.history, session.cards),
+  }
+}
+
+export const applySaveValidatedDraft = (
+  session: BoardSessionSlice,
+  draft: CardDraft,
+  title: CardTitle,
+):
+  | {
+      readonly ok: true
+      readonly card: KanbanCard
+      readonly cards: ReadonlyArray<KanbanCard>
+      readonly history: BoardHistoryState
+    }
+  | { readonly ok: false; readonly error: string } => {
+  const existing = findCard(session.cards, draft.cardId)
+  if (existing === undefined) {
+    return { ok: false, error: `Card ${draft.code} no longer exists.` }
+  }
+
+  const nextCards = saveCard(session.cards, draft.cardId, draftToPatch(draft, title))
+  const saved = findCard(nextCards, draft.cardId) ?? existing
+  return {
+    ok: true,
+    card: saved,
+    cards: nextCards,
     history: recordHistory(session.history, session.cards),
   }
 }
@@ -188,20 +243,7 @@ export const applySaveDraft = (
   | { readonly ok: false; readonly error: string } => {
   const check = validateCardTitle(draft.title, minTitleLength)
   if (!check.ok) return check
-
-  const existing = findCard(session.cards, draft.cardId)
-  if (existing === undefined) {
-    return { ok: false, error: `Card ${draft.code} no longer exists.` }
-  }
-
-  const nextCards = saveCard(session.cards, draft.cardId, draftToPatch(draft))
-  const saved = findCard(nextCards, draft.cardId) ?? existing
-  return {
-    ok: true,
-    card: saved,
-    cards: nextCards,
-    history: recordHistory(session.history, session.cards),
-  }
+  return applySaveValidatedDraft(session, draft, check.title)
 }
 
 export const applyResetBoard = (

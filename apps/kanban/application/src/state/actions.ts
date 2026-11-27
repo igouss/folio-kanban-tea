@@ -1,8 +1,11 @@
 import type {
+  CardId,
+  CardTitle,
   LaneId,
   Priority,
   PriorityFilter,
-  SavedBoard
+  SavedBoard,
+  StoryPoints
 } from "@folio/kanban-domain"
 import type { LifecycleState, ViewportMetrics } from "@universal-ui/core"
 import type { CardDensity, KanbanState } from "./state.ts"
@@ -21,22 +24,23 @@ export type KanbanAction =
   | { readonly _tag: "SubmittedQuickCard" }
   | {
       readonly _tag: "CompletedMintCard"
-      readonly id: string
+      readonly requestId: number
+      readonly id: CardId
       readonly createdAt: string
-      readonly title: string
+      readonly title: CardTitle
       readonly lane: LaneId
       readonly tag: string
     }
   | { readonly _tag: "CancelledQuickCard" }
-  | { readonly _tag: "ClickedMoveCard"; readonly cardId: string; readonly toLane: LaneId }
-  | { readonly _tag: "ClickedDeleteCard"; readonly cardId: string }
-  | { readonly _tag: "ClickedOpenEditor"; readonly cardId: string }
+  | { readonly _tag: "ClickedMoveCard"; readonly cardId: CardId; readonly toLane: LaneId }
+  | { readonly _tag: "ClickedDeleteCard"; readonly cardId: CardId }
+  | { readonly _tag: "ClickedOpenEditor"; readonly cardId: CardId }
   | { readonly _tag: "TypedEditTitle"; readonly text: string }
   | { readonly _tag: "TypedEditNotes"; readonly text: string }
   | { readonly _tag: "TypedEditAssignee"; readonly text: string }
   | { readonly _tag: "SelectedEditLane"; readonly lane: LaneId }
   | { readonly _tag: "SelectedEditPriority"; readonly priority: Priority }
-  | { readonly _tag: "SelectedEditPoints"; readonly points: number }
+  | { readonly _tag: "SelectedEditPoints"; readonly points: StoryPoints }
   | { readonly _tag: "SubmittedEditCard" }
   | { readonly _tag: "CancelledEditCard" }
   | { readonly _tag: "ClickedResetDemo" }
@@ -52,7 +56,8 @@ export type AppEffect =
   | { readonly _tag: "PersistBoard"; readonly board: SavedBoard }
   | {
       readonly _tag: "MintCardMeta"
-      readonly title: string
+      readonly requestId: number
+      readonly title: CardTitle
       readonly lane: LaneId
       readonly tag: string
     }

@@ -12,6 +12,31 @@ export type ThemeMode = (typeof THEME_MODES)[number]
 
 export const STORY_POINTS = [1, 2, 3, 5, 8, 13] as const
 export type StoryPoints = (typeof STORY_POINTS)[number]
+export type StoryPointsLabel = `${StoryPoints}`
+
+export const CARD_TITLE_MIN_LENGTH = 2
+
+/**
+ * Branded, non-empty trimmed card identifier.
+ * Structurally compatible with Effect `Schema.brand("CardId")` while keeping
+ * core domain types zero-dependency. Construct via `parseCardId` or `CardIdSchema`.
+ */
+export type CardId = string & {
+  readonly ['~effect/Brand']: {
+    readonly CardId: 'CardId'
+  }
+}
+
+/**
+ * Validated, trimmed card title of at least `CARD_TITLE_MIN_LENGTH` characters.
+ * Structurally compatible with Effect `Schema.brand("CardTitle")` while keeping
+ * core domain types zero-dependency. Construct via `validateCardTitle` / `parseCardTitle`.
+ */
+export type CardTitle = string & {
+  readonly ['~effect/Brand']: {
+    readonly CardTitle: 'CardTitle'
+  }
+}
 
 export interface PriorityOption {
   readonly value: Priority
@@ -54,47 +79,47 @@ export const LANES: ReadonlyArray<LaneMeta> = [
 ]
 
 export interface KanbanCard {
-  readonly id: string
+  readonly id: CardId
   readonly code: string
-  readonly title: string
+  readonly title: CardTitle
   readonly notes: string
   readonly lane: LaneId
   readonly priority: Priority
   readonly assignee: string
-  readonly points: number
+  readonly points: StoryPoints
   readonly tags: ReadonlyArray<string>
   readonly createdAt: string
 }
 
 export interface NewCardInput {
-  readonly title: string
+  readonly title: CardTitle
   readonly notes: string
   readonly lane: LaneId
   readonly priority: Priority
   readonly assignee: string
-  readonly points: number
+  readonly points: StoryPoints
   readonly tags: ReadonlyArray<string>
 }
 
 export interface CardPatch {
-  readonly title?: string
+  readonly title?: CardTitle
   readonly notes?: string
   readonly lane?: LaneId
   readonly priority?: Priority
   readonly assignee?: string
-  readonly points?: number
+  readonly points?: StoryPoints
   readonly tags?: ReadonlyArray<string>
 }
 
 export interface CardDraft {
-  readonly cardId: string
+  readonly cardId: CardId
   readonly code: string
   readonly title: string
   readonly notes: string
   readonly lane: LaneId
   readonly priority: Priority
   readonly assignee: string
-  readonly points: number
+  readonly points: StoryPoints
 }
 
 export interface SavedBoard {

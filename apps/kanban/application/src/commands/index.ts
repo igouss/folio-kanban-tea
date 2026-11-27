@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer"
 import {
   MintCardMeta,
   MintedCardMetaSchema,
+  PositiveRequestIdSchema,
   type MintedCardMeta
 } from "./MintCardMeta.ts"
 import { SaveBoard } from "./SaveBoard.ts"
@@ -11,6 +12,7 @@ import { SaveBoard } from "./SaveBoard.ts"
 export {
   MintCardMeta,
   MintedCardMetaSchema,
+  PositiveRequestIdSchema,
   SaveBoard,
   type MintedCardMeta
 }

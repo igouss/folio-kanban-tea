@@ -1,15 +1,24 @@
 import { Command } from "@effect/ui"
-import { LaneId } from "@folio/kanban-domain/schema"
+import {
+  CardIdSchema,
+  CardTitleSchema,
+  LaneId
+} from "@folio/kanban-domain/schema"
 import { IdGenerator } from "@universal-ui/core"
 import * as Clock from "effect/Clock"
 import * as Effect from "effect/Effect"
 import type * as Layer from "effect/Layer"
 import * as Schema from "effect/Schema"
 
+export const PositiveRequestIdSchema = Schema.Int.pipe(
+  Schema.check(Schema.isGreaterThan(0))
+)
+
 export const MintedCardMetaSchema = Schema.Struct({
-  id: Schema.String,
+  requestId: PositiveRequestIdSchema,
+  id: CardIdSchema,
   createdAt: Schema.String,
-  title: Schema.String,
+  title: CardTitleSchema,
   lane: LaneId,
   tag: Schema.String
 })
@@ -17,13 +26,15 @@ export type MintedCardMeta = typeof MintedCardMetaSchema.Type
 
 /**
  * Application command that mints a card's identity and creation timestamp
- * using the IdGenerator port and Effect Clock.
+ * using the IdGenerator port and Effect Clock, carrying the caller's
+ * correlation `requestId` so stale async completions are ignored.
  */
 export class MintCardMeta extends Command.Service<MintCardMeta>()(
   "folio/MintCardMeta",
   {
     args: {
-      title: Schema.String,
+      requestId: PositiveRequestIdSchema,
+      title: CardTitleSchema,
       lane: LaneId,
       tag: Schema.String
     },
@@ -34,11 +45,13 @@ export class MintCardMeta extends Command.Service<MintCardMeta>()(
     this.toLayer(
       Effect.gen(function* () {
         const ids = yield* IdGenerator
-        return ({ title, lane, tag }) =>
+        return ({ requestId, title, lane, tag }) =>
           Effect.gen(function* () {
-            const id = yield* ids.nextId(`${tag}-card`)
+            const rawId = yield* ids.nextId(`${tag}-card`)
+            const id = Schema.decodeUnknownSync(CardIdSchema)(rawId.trim())
             const now = yield* Clock.currentTimeMillis
             return {
+              requestId,
               id,
               createdAt: new Date(now).toISOString(),
               title,
