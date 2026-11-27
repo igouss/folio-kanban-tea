@@ -165,19 +165,45 @@ export function createFakeFabric(): FakeFabric {
     else if (source.props['visible'] !== false) dismissing.add(source.reactTag);
   };
 
+  const fakeNodes = new WeakMap<object, FakeFabricNode>();
+  const childSets = new WeakMap<object, FakeFabricNode[]>();
+
+  const registerNode = (n: FakeFabricNode): FakeFabricNode => {
+    fakeNodes.set(n, n);
+    return n;
+  };
+
+  const resolveNode = (n: FabricNode): FakeFabricNode => {
+    const resolved = fakeNodes.get(n);
+    if (resolved === undefined) {
+      throw new Error('FakeFabric received a FabricNode not created by this fake');
+    }
+    return resolved;
+  };
+
+  const resolveChildSet = (set: FabricNodeSet): FakeFabricNode[] => {
+    if (typeof set === 'object' && set !== null) {
+      const resolved = childSets.get(set);
+      if (resolved !== undefined) return resolved;
+    }
+    throw new Error('FakeFabric received a FabricNodeSet not created by this fake');
+  };
+
   const clone = (n: FabricNode, props?: object, keepChildren = false): FabricNode => {
-    const source = n as unknown as FakeFabricNode;
+    const source = resolveNode(n);
     noteModal(source, props as Record<string, unknown> | undefined);
-    return withHandle(
-      {
-        ...source,
-        handle: ++handle,
-        // Fabric merges raw props onto the source props rather than replacing them.
-        props: props ? { ...source.props, ...props } : source.props,
-        children: keepChildren ? source.children : [],
-      },
-      source.instanceHandle,
-    ) as unknown as FabricNode;
+    return registerNode(
+      withHandle(
+        {
+          ...source,
+          handle: ++handle,
+          // Fabric merges raw props onto the source props rather than replacing them.
+          props: props ? { ...source.props, ...props } : source.props,
+          children: keepChildren ? source.children : [],
+        },
+        source.instanceHandle,
+      ),
+    );
   };
 
   const node = (
@@ -186,9 +212,11 @@ export function createFakeFabric(): FakeFabric {
     props: object,
     instanceHandle: unknown,
   ): FakeFabricNode =>
-    withHandle(
-      { handle: ++handle, reactTag, viewName, props: { ...props }, children: [] },
-      instanceHandle,
+    registerNode(
+      withHandle(
+        { handle: ++handle, reactTag, viewName, props: { ...props }, children: [] },
+        instanceHandle,
+      ),
     );
 
   // Keys sorted at every depth, so a golden does not depend on the order props were set in. An
@@ -215,7 +243,7 @@ export function createFakeFabric(): FakeFabric {
   const fake: FakeFabric = {
     createNode(reactTag, viewName, _rootTag, props, instanceHandle) {
       calls.createNode++;
-      return node(reactTag, viewName, props, instanceHandle) as unknown as FabricNode;
+      return node(reactTag, viewName, props, instanceHandle);
     },
     cloneNodeWithNewChildren(n) {
       calls.cloneWithChildren++;
@@ -230,46 +258,52 @@ export function createFakeFabric(): FakeFabric {
       return clone(n, newProps);
     },
     appendChild(parent, child) {
-      const into = parent as unknown as FakeFabricNode;
-      adopt(into.reactTag, child as unknown as FakeFabricNode);
-      into.children.push(child as unknown as FakeFabricNode);
+      const into = resolveNode(parent);
+      const childNode = resolveNode(child);
+      adopt(into.reactTag, childNode);
+      into.children.push(childNode);
       return parent;
     },
     createChildSet() {
-      return [] as FabricNodeSet;
+      const set: FakeFabricNode[] = [];
+      childSets.set(set, set);
+      return set;
     },
     appendChildToSet(set, child) {
-      adopt(ROOT, child as unknown as FakeFabricNode);
-      (set as FakeFabricNode[]).push(child as unknown as FakeFabricNode);
+      const childNode = resolveNode(child);
+      adopt(ROOT, childNode);
+      resolveChildSet(set).push(childNode);
     },
     completeRoot(_rootTag, set) {
       calls.completeRoot++;
-      diff(committed, set as FakeFabricNode[]);
-      committed = set as FakeFabricNode[];
+      const next = resolveChildSet(set);
+      diff(committed, next);
+      committed = next;
       dismissAfterCommit();
     },
     registerEventHandler(fn) {
       handler = fn;
     },
-    setIsJSResponder(node, isResponder, block) {
+    setIsJSResponder(target, isResponder, block) {
       responderCalls.push({
-        viewName: (node as unknown as FakeFabricNode).viewName,
+        viewName: resolveNode(target).viewName,
         isResponder,
         block,
       });
     },
-    measureInWindow(node, onSuccess) {
+    measureInWindow(target, onSuccess) {
       // By `nativeID` first, so a test that cares which of two views was measured can say so; by
       // view name otherwise, which is enough when there is only one candidate on screen.
-      const fake = node as unknown as FakeFabricNode;
-      const frame = frames.get(String(fake.props['nativeID'])) ?? frames.get(fake.viewName);
+      const resolved = resolveNode(target);
+      const frame = frames.get(String(resolved.props['nativeID'])) ?? frames.get(resolved.viewName);
       if (frame) onSuccess(frame.x, frame.y, frame.width, frame.height);
     },
-    dispatchCommand(node, name, args) {
-      const command = { viewName: (node as unknown as FakeFabricNode).viewName, name, args };
+    dispatchCommand(target, name, args) {
+      const resolved = resolveNode(target);
+      const command = { viewName: resolved.viewName, name, args };
       // Which node, for a test that has several of one view; off the enumerable keys, so a
       // `deepEqual` against `{ viewName, name, args }` still holds.
-      Object.defineProperty(command, 'node', { value: node, enumerable: false });
+      Object.defineProperty(command, 'node', { value: resolved, enumerable: false });
       commands.push(command as typeof command & { node: FakeFabricNode });
     },
     responderCalls,

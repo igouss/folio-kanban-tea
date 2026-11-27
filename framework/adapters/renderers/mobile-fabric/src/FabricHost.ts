@@ -551,7 +551,7 @@ export const mount = <
     return yield* Ui.mountWithHost(component, props, handle.container, context)
   })
 
-export const mountApp = <
+export const mountAppWithLayer = <
   Name extends string,
   Props,
   Model,
@@ -564,13 +564,9 @@ export const mountApp = <
   component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
   props: Props | Effect.Effect<Props, never, RP>,
   engine: Engine,
-  ...rest: [FabricAppRequirements<R, RP, V>] extends [never]
-    ? [options?: FabricMountAppOptions<never>]
-    : [options: FabricMountAppOptions<FabricAppRequirements<R, RP, V>>]
+  options: FabricHostOptions,
+  layer: Layer.Layer<FabricAppRequirements<R, RP, V>>
 ): MountedFabricApp<Model, Msg> => {
-  const options = (rest[0] ?? {}) as FabricHostOptions & {
-    readonly layer?: Layer.Layer<FabricAppRequirements<R, RP, V>> | undefined
-  }
   const scope = Effect.runSync(Scope.make())
   let currentRoot: Renderer.Root<Model, Msg> | undefined
   let resolveReady!: (root: Renderer.Root<Model, Msg>) => void
@@ -582,15 +578,12 @@ export const mountApp = <
   // Prevent unhandled rejection warnings if a caller disposes before awaiting `ready`.
   ready.catch(() => {})
 
-  const providedLayer: Layer.Layer<FabricAppRequirements<R, RP, V>> =
-    options.layer ?? (Layer.empty as Layer.Layer<FabricAppRequirements<R, RP, V>>)
-
   const program: Effect.Effect<Renderer.Root<Model, Msg>> = mount(
     component,
     props,
     engine,
     options
-  ).pipe(Effect.provide(providedLayer), Scope.provide(scope))
+  ).pipe(Effect.provide(layer), Scope.provide(scope))
 
   const fiber = Effect.runFork(
     program.pipe(
@@ -620,4 +613,29 @@ export const mountApp = <
       )
     }
   }
+}
+
+export const mountApp = <
+  Name extends string,
+  Props,
+  Model,
+  Msg,
+  Events,
+  R,
+  V extends View.Elements,
+  RP = never
+>(
+  component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
+  props: Props | Effect.Effect<Props, never, RP>,
+  engine: Engine,
+  ...rest: [FabricAppRequirements<R, RP, V>] extends [never]
+    ? [options?: FabricMountAppOptions<never>]
+    : [options: FabricMountAppOptions<FabricAppRequirements<R, RP, V>>]
+): MountedFabricApp<Model, Msg> => {
+  const options = (rest[0] ?? {}) as FabricHostOptions & {
+    readonly layer?: Layer.Layer<FabricAppRequirements<R, RP, V>> | undefined
+  }
+  const providedLayer: Layer.Layer<FabricAppRequirements<R, RP, V>> =
+    options.layer ?? (Layer.empty as Layer.Layer<FabricAppRequirements<R, RP, V>>)
+  return mountAppWithLayer(component, props, engine, options, providedLayer)
 }

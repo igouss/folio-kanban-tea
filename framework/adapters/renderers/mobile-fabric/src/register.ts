@@ -1,6 +1,6 @@
 import type { Component, View } from "@effect/ui"
 import type * as Effect from "effect/Effect"
-import type * as Layer from "effect/Layer"
+import * as Layer from "effect/Layer"
 import {
   Engine,
   type StyleSheet as CssStyleSheet,
@@ -15,7 +15,7 @@ import {
   processColor
 } from "react-native"
 import {
-  mountApp,
+  mountAppWithLayer,
   type FabricAppRequirements,
   type MountedFabricApp
 } from "./FabricHost.ts"
@@ -125,20 +125,14 @@ export const registerApp = <
         : watchConditions(
             attachStyles(engine, { platform: Platform.OS, conditions })
           )
-    const mounted: MountedFabricApp<Model, Msg> = mountApp(
+    const providedLayer: Layer.Layer<FabricAppRequirements<R, RP, V>> =
+      layer ?? (Layer.empty as Layer.Layer<FabricAppRequirements<R, RP, V>>)
+    const mounted: MountedFabricApp<Model, Msg> = mountAppWithLayer(
       component,
       props,
       engine,
-      ...([{ platform: Platform.OS, layer }] as unknown as [
-        FabricAppRequirements<R, RP, V>
-      ] extends [never]
-        ? [options?: { readonly platform?: string; readonly layer?: Layer.Layer<never> }]
-        : [
-            options: {
-              readonly platform?: string
-              readonly layer: Layer.Layer<FabricAppRequirements<R, RP, V>>
-            }
-          ])
+      { platform: Platform.OS },
+      providedLayer
     )
     const { next, disposeToRun } = transitionRegistration(registration.state, {
       _tag: "Start",
