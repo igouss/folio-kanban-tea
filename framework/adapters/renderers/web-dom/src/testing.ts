@@ -1,4 +1,21 @@
-export type FakeDomListener = (event: Record<string, unknown>) => void
+export interface FakeDomEvent {
+  readonly preventDefault: () => void
+  readonly key?: string | undefined
+  readonly shiftKey?: boolean | undefined
+  readonly ctrlKey?: boolean | undefined
+  readonly altKey?: boolean | undefined
+  readonly metaKey?: boolean | undefined
+  readonly [extra: string]: unknown
+}
+
+export type FakeDomListener = (event: FakeDomEvent) => void
+
+export interface FakeDomStyle {
+  readonly properties: Map<string, string>
+  setProperty(name: string, value: string): void
+  removeProperty(name: string): string
+  getPropertyValue(name: string): string
+}
 
 export interface FakeDomNode {
   readonly nodeType: number
@@ -10,7 +27,7 @@ export interface FakeDomNode {
   value: string
   disabled: boolean
   isConnected: boolean
-  readonly style: Record<string, string>
+  readonly style: FakeDomStyle
   readonly attrs: Map<string, string>
   readonly listeners: Map<string, Set<FakeDomListener>>
   readonly nextSibling: FakeDomNode | null
@@ -41,6 +58,24 @@ export interface FakeDomHarness {
 }
 
 export const createFakeDom = (): FakeDomHarness => {
+  const makeStyle = (): FakeDomStyle => {
+    const properties = new Map<string, string>()
+    return {
+      properties,
+      setProperty(name, value) {
+        properties.set(name, value)
+      },
+      removeProperty(name) {
+        const prev = properties.get(name) ?? ""
+        properties.delete(name)
+        return prev
+      },
+      getPropertyValue(name) {
+        return properties.get(name) ?? ""
+      }
+    }
+  }
+
   const makeNode = (nodeType: number, tagName: string, text = ""): FakeDomNode => {
     const node: FakeDomNode = {
       nodeType,
@@ -52,7 +87,7 @@ export const createFakeDom = (): FakeDomHarness => {
       value: "",
       disabled: false,
       isConnected: true,
-      style: {},
+      style: makeStyle(),
       attrs: new Map(),
       listeners: new Map(),
       get nextSibling(): FakeDomNode | null {

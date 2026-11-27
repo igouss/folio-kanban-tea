@@ -10,153 +10,63 @@ import {
   transitionPointer,
   type PointerState
 } from "./fsm.ts"
+import { toCssPropertyName, uiStyleToCss } from "./style.ts"
+
+export { uiStyleToCss }
 
 const CONTROLLED_PROPS: ReadonlySet<string> = new Set(["value"])
 
-const UNITLESS_KEYS = new Set([
-  "flex",
-  "flexGrow",
-  "flexShrink",
-  "opacity",
-  "zIndex",
-  "fontWeight"
-])
-
-const toCssValue = (key: string, value: unknown): string | undefined => {
-  if (value === undefined || value === null) return undefined
-  if (typeof value === "number") {
-    return UNITLESS_KEYS.has(key) ? String(value) : `${value}px`
-  }
-  return String(value)
+export interface WebDomStyle {
+  setProperty(name: string, value: string): void
+  removeProperty(name: string): string
 }
 
-export const uiStyleToCss = (
-  tag: string,
-  base: UiStyle | undefined,
-  extra?: UiStyle | undefined
-): Readonly<Record<string, string>> => {
-  const merged: Record<string, unknown> = {}
-
-  if (tag === "box") {
-    merged["display"] = "flex"
-    merged["flexDirection"] = "column"
-    merged["boxSizing"] = "border-box"
-  } else if (tag === "scroll") {
-    merged["display"] = "flex"
-    merged["flexDirection"] = "column"
-    merged["overflow"] = "auto"
-    merged["minHeight"] = 0
-    merged["boxSizing"] = "border-box"
-  } else if (tag === "button") {
-    merged["display"] = "inline-flex"
-    merged["flexDirection"] = "row"
-    merged["alignItems"] = "center"
-    merged["justifyContent"] = "center"
-    merged["backgroundColor"] = "transparent"
-    merged["font"] = "inherit"
-    merged["color"] = "inherit"
-    merged["cursor"] = "pointer"
-    merged["boxSizing"] = "border-box"
-  } else if (tag === "input" || tag === "textarea") {
-    merged["boxSizing"] = "border-box"
-    merged["font"] = "inherit"
-    merged["outline"] = "none"
-  } else if (tag === "text") {
-    merged["boxSizing"] = "border-box"
-  }
-
-  const apply = (style: UiStyle | undefined) => {
-    if (style === undefined) return
-    for (const [key, raw] of Object.entries(style)) {
-      if (raw === undefined) continue
-      if (key === "paddingHorizontal") {
-        merged["paddingLeft"] = raw
-        merged["paddingRight"] = raw
-      } else if (key === "paddingVertical") {
-        merged["paddingTop"] = raw
-        merged["paddingBottom"] = raw
-      } else if (key === "marginHorizontal") {
-        merged["marginLeft"] = raw
-        merged["marginRight"] = raw
-      } else if (key === "marginVertical") {
-        merged["marginTop"] = raw
-        merged["marginBottom"] = raw
-      } else if (key === "flex") {
-        merged["flex"] = `${raw} 1 0%`
-      } else {
-        merged[key] = raw
-      }
-    }
-  }
-
-  apply(base)
-  apply(extra)
-
-  if (tag === "button") {
-    const hasBorder =
-      merged["borderWidth"] !== undefined ||
-      merged["borderTopWidth"] !== undefined ||
-      merged["borderRightWidth"] !== undefined ||
-      merged["borderBottomWidth"] !== undefined ||
-      merged["borderLeftWidth"] !== undefined
-    if (!hasBorder) {
-      merged["borderStyle"] = "none"
-      merged["borderWidth"] = 0
-    }
-    const hasPadding =
-      merged["padding"] !== undefined ||
-      merged["paddingTop"] !== undefined ||
-      merged["paddingRight"] !== undefined ||
-      merged["paddingBottom"] !== undefined ||
-      merged["paddingLeft"] !== undefined
-    if (!hasPadding) {
-      merged["padding"] = 0
-    }
-  }
-
-  if (
-    typeof merged["borderWidth"] === "number" &&
-    merged["borderWidth"] > 0 &&
-    merged["borderStyle"] === undefined
-  ) {
-    merged["borderStyle"] = "solid"
-  }
-  if (
-    typeof merged["borderTopWidth"] === "number" &&
-    merged["borderTopWidth"] > 0 &&
-    merged["borderTopStyle"] === undefined
-  ) {
-    merged["borderTopStyle"] = "solid"
-  }
-  if (
-    typeof merged["borderBottomWidth"] === "number" &&
-    merged["borderBottomWidth"] > 0 &&
-    merged["borderBottomStyle"] === undefined
-  ) {
-    merged["borderBottomStyle"] = "solid"
-  }
-  if (
-    typeof merged["borderLeftWidth"] === "number" &&
-    merged["borderLeftWidth"] > 0 &&
-    merged["borderLeftStyle"] === undefined
-  ) {
-    merged["borderLeftStyle"] = "solid"
-  }
-  if (
-    typeof merged["borderRightWidth"] === "number" &&
-    merged["borderRightWidth"] > 0 &&
-    merged["borderRightStyle"] === undefined
-  ) {
-    merged["borderRightStyle"] = "solid"
-  }
-
-  const out: Record<string, string> = {}
-  for (const [key, value] of Object.entries(merged)) {
-    const cssVal = toCssValue(key, value)
-    if (cssVal !== undefined) out[key] = cssVal
-  }
-  return out
+export interface WebDomEvent {
+  preventDefault(): void
+  readonly key?: string | undefined
+  readonly shiftKey?: boolean | undefined
+  readonly ctrlKey?: boolean | undefined
+  readonly altKey?: boolean | undefined
+  readonly metaKey?: boolean | undefined
 }
+
+export type WebDomEventListener = (event: WebDomEvent) => void
+
+export interface WebDomNode {
+  readonly parentNode: WebDomNode | null
+  readonly nextSibling: WebDomNode | null
+  readonly childNodes: ArrayLike<WebDomNode>
+  nodeValue: string | null
+  insertBefore(child: WebDomNode, ref: WebDomNode | null): unknown
+  removeChild(child: WebDomNode): unknown
+}
+
+export interface WebDomElement extends WebDomNode {
+  readonly isConnected: boolean
+  readonly style: WebDomStyle
+  disabled?: boolean
+  value?: string
+  setAttribute(name: string, value: string): void
+  removeAttribute(name: string): void
+  addEventListener(type: string, listener: WebDomEventListener): void
+  removeEventListener(type: string, listener: WebDomEventListener): void
+  focus(): void
+}
+
+export interface WebDomDocument {
+  title: string
+  createElement(tag: string): WebDomElement
+  createTextNode(text: string): WebDomNode
+  createDocumentFragment(): WebDomNode
+  startViewTransition?(callback: () => void): unknown
+}
+
+export interface WebDomContainer extends WebDomNode {
+  readonly ownerDocument: WebDomDocument | null
+}
+
+const isWebDomElement = (node: WebDomNode): node is WebDomElement =>
+  "setAttribute" in node && "style" in node
 
 interface NodeMeta {
   readonly uiTag: string
@@ -169,11 +79,11 @@ interface NodeMeta {
   appliedCssKeys: Set<string>
   handlers: Readonly<Record<string, View.Handler<unknown, any>>>
   dispatch: Renderer.Dispatch | undefined
-  listeners: Map<string, EventListener>
+  listeners: Map<string, WebDomEventListener>
 }
 
 export interface WebHostHandle {
-  readonly host: Renderer.Host<globalThis.Node>
+  readonly host: Renderer.Host<WebDomNode>
   readonly dispose: () => void
 }
 
@@ -192,11 +102,11 @@ const domTagFor = (uiTag: string): string => {
   }
 }
 
-export const makeHost = (doc: Document): WebHostHandle => {
-  const metas = new WeakMap<globalThis.Node, NodeMeta>()
-  const trackedNodes = new Set<globalThis.Node>()
+export const makeHost = (doc: WebDomDocument): WebHostHandle => {
+  const metas = new WeakMap<WebDomNode, NodeMeta>()
+  const trackedNodes = new Set<WebDomNode>()
 
-  const applyCss = (el: HTMLElement, meta: NodeMeta): void => {
+  const applyCss = (el: WebDomElement, meta: NodeMeta): void => {
     let extra: UiStyle | undefined
     switch (meta.pointer._tag) {
       case "Pressed":
@@ -231,29 +141,35 @@ export const makeHost = (doc: Document): WebHostHandle => {
       next["overflow"] = "hidden"
     }
 
-    const styleDecl = el.style as unknown as Record<string, string>
-    for (const prevKey of meta.appliedCssKeys) {
-      if (!(prevKey in next)) {
-        styleDecl[prevKey] = ""
+    const nextProps = new Map<string, string>()
+    for (const [key, value] of Object.entries(next)) {
+      nextProps.set(toCssPropertyName(key), value)
+    }
+    for (const prevProp of meta.appliedCssKeys) {
+      if (!nextProps.has(prevProp)) {
+        el.style.removeProperty(prevProp)
       }
     }
     meta.appliedCssKeys.clear()
-    for (const [key, value] of Object.entries(next)) {
-      styleDecl[key] = value
-      meta.appliedCssKeys.add(key)
+    for (const [prop, value] of nextProps) {
+      el.style.setProperty(prop, value)
+      meta.appliedCssKeys.add(prop)
     }
   }
 
-  const ensureInteractionListeners = (el: HTMLElement, meta: NodeMeta): void => {
+  const ensureInteractionListeners = (
+    el: WebDomElement,
+    meta: NodeMeta
+  ): void => {
     const needsHover = meta.hoverStyle !== undefined
     const needsActive = meta.activeStyle !== undefined
 
     if (needsHover && !meta.listeners.has("__hoverEnter")) {
-      const onEnter: EventListener = () => {
+      const onEnter: WebDomEventListener = () => {
         meta.pointer = transitionPointer(meta.pointer, "enter")
         applyCss(el, meta)
       }
-      const onLeave: EventListener = () => {
+      const onLeave: WebDomEventListener = () => {
         meta.pointer = transitionPointer(meta.pointer, "leave")
         applyCss(el, meta)
       }
@@ -264,11 +180,11 @@ export const makeHost = (doc: Document): WebHostHandle => {
     }
 
     if (needsActive && !meta.listeners.has("__activeDown")) {
-      const onDown: EventListener = () => {
+      const onDown: WebDomEventListener = () => {
         meta.pointer = transitionPointer(meta.pointer, "down")
         applyCss(el, meta)
       }
-      const onUp: EventListener = () => {
+      const onUp: WebDomEventListener = () => {
         meta.pointer = transitionPointer(meta.pointer, "up")
         applyCss(el, meta)
       }
@@ -279,10 +195,9 @@ export const makeHost = (doc: Document): WebHostHandle => {
     }
   }
 
-  const cleanupNode = (node: globalThis.Node): void => {
+  const cleanupNode = (node: WebDomNode): void => {
     const meta = metas.get(node)
-    if (meta !== undefined && "removeEventListener" in node) {
-      const el = node as HTMLElement
+    if (meta !== undefined && isWebDomElement(node)) {
       for (const [key, listener] of meta.listeners) {
         const domEvent =
           key === "__hoverEnter"
@@ -294,7 +209,7 @@ export const makeHost = (doc: Document): WebHostHandle => {
                 : key === "__activeUp"
                   ? "mouseup"
                   : key
-        el.removeEventListener(domEvent, listener)
+        node.removeEventListener(domEvent, listener)
       }
       meta.listeners.clear()
       metas.delete(node)
@@ -305,7 +220,7 @@ export const makeHost = (doc: Document): WebHostHandle => {
     }
   }
 
-  const host: Renderer.Host<globalThis.Node> = {
+  const host: Renderer.Host<WebDomNode> = {
     createElement(tag) {
       const el = doc.createElement(domTagFor(tag))
       if (tag === "button") {
@@ -347,15 +262,14 @@ export const makeHost = (doc: Document): WebHostHandle => {
     },
 
     setAttr(node, attrName, value) {
-      if (!("setAttribute" in node)) return
-      const el = node as HTMLElement
-      if (value === undefined) el.removeAttribute(attrName)
-      else el.setAttribute(attrName, value)
+      if (!isWebDomElement(node)) return
+      if (value === undefined) node.removeAttribute(attrName)
+      else node.setAttribute(attrName, value)
     },
 
     setProp(node, propName, value) {
-      if (!("setAttribute" in node)) return
-      const el = node as HTMLElement
+      if (!isWebDomElement(node)) return
+      const el = node
       const meta = metas.get(node)
 
       if (propName === "style" && meta !== undefined) {
@@ -398,7 +312,7 @@ export const makeHost = (doc: Document): WebHostHandle => {
           applyCss(el, meta)
         }
         if ("disabled" in el) {
-          ;(el as HTMLButtonElement).disabled = flag
+          el.disabled = flag
         }
         if (flag) el.setAttribute("aria-disabled", "true")
         else el.removeAttribute("aria-disabled")
@@ -406,8 +320,8 @@ export const makeHost = (doc: Document): WebHostHandle => {
       }
       if (propName === "value") {
         const desired = typeof value === "string" ? value : ""
-        if ("value" in el && (el as HTMLInputElement).value !== desired) {
-          ;(el as HTMLInputElement).value = desired
+        if ("value" in el && el.value !== desired) {
+          el.value = desired
         }
         return
       }
@@ -417,17 +331,10 @@ export const makeHost = (doc: Document): WebHostHandle => {
         return
       }
       if (propName === "placeholderTextColor") {
-        const styleDecl = el.style as unknown as Record<string, string>
         if (typeof value === "string") {
-          if (typeof el.style.setProperty === "function") {
-            el.style.setProperty("--placeholder-color", value)
-          } else {
-            styleDecl["--placeholder-color"] = value
-          }
-        } else if (typeof el.style.removeProperty === "function") {
-          el.style.removeProperty("--placeholder-color")
+          el.style.setProperty("--placeholder-color", value)
         } else {
-          delete styleDecl["--placeholder-color"]
+          el.style.removeProperty("--placeholder-color")
         }
         return
       }
@@ -475,14 +382,18 @@ export const makeHost = (doc: Document): WebHostHandle => {
     },
 
     setEvents(node, handlers, dispatch) {
-      if (!("addEventListener" in node)) return
-      const el = node as HTMLElement
+      if (!isWebDomElement(node)) return
+      const el = node
       const meta = metas.get(node)
       if (meta === undefined) return
       meta.handlers = handlers
       meta.dispatch = dispatch
 
-      const ensureListener = (domEvent: string, active: boolean, listener: EventListener) => {
+      const ensureListener = (
+        domEvent: string,
+        active: boolean,
+        listener: WebDomEventListener
+      ) => {
         const existing = meta.listeners.get(domEvent)
         if (active && existing === undefined) {
           el.addEventListener(domEvent, listener)
@@ -503,30 +414,29 @@ export const makeHost = (doc: Document): WebHostHandle => {
         if (meta.dispatch === undefined) return
         const h = meta.handlers["changeText"]
         if (h !== undefined) {
-          const text = "value" in el ? String((el as HTMLInputElement).value) : ""
+          const text = "value" in el && el.value !== undefined ? String(el.value) : ""
           meta.dispatch("changeText", h, { text })
         }
       })
 
       const needsKeyDown =
         handlers["keyDown"] !== undefined || handlers["submit"] !== undefined
-      ensureListener("keydown", needsKeyDown, (event) => {
+      ensureListener("keydown", needsKeyDown, (ke) => {
         if (meta.dispatch === undefined) return
-        const ke = event as KeyboardEvent
         if (ke.key === "Enter" && meta.handlers["submit"] !== undefined) {
           ke.preventDefault()
-          const text = "value" in el ? String((el as HTMLInputElement).value) : ""
+          const text = "value" in el && el.value !== undefined ? String(el.value) : ""
           meta.dispatch("submit", meta.handlers["submit"], { text })
           return
         }
         const h = meta.handlers["keyDown"]
         if (h !== undefined) {
           meta.dispatch("keyDown", h, {
-            key: ke.key,
-            shift: ke.shiftKey,
-            ctrl: ke.ctrlKey,
-            alt: ke.altKey,
-            meta: ke.metaKey
+            key: ke.key ?? "",
+            shift: ke.shiftKey === true,
+            ctrl: ke.ctrlKey === true,
+            alt: ke.altKey === true,
+            meta: ke.metaKey === true
           })
         }
       })
@@ -543,11 +453,8 @@ export const makeHost = (doc: Document): WebHostHandle => {
     },
 
     viewTransition(update) {
-      const d = doc as Document & {
-        startViewTransition?: (cb: () => void) => unknown
-      }
-      if (typeof d.startViewTransition === "function") {
-        d.startViewTransition(update)
+      if (typeof doc.startViewTransition === "function") {
+        doc.startViewTransition(update)
       } else {
         update()
       }
@@ -563,7 +470,7 @@ export const makeHost = (doc: Document): WebHostHandle => {
   return { host, dispose }
 }
 
-const makeScopedHost = (doc: Document) =>
+const makeScopedHost = (doc: WebDomDocument) =>
   Effect.gen(function* () {
     const handle = makeHost(doc)
     yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
@@ -574,7 +481,7 @@ const makeScopedHost = (doc: Document) =>
   })
 
 export const layer = (
-  doc: Document
+  doc: WebDomDocument
 ): Layer.Layer<Renderer.Renderer | Ui.Host> =>
   Layer.effectContext(Effect.map(makeScopedHost(doc), ({ context }) => context))
 
@@ -590,7 +497,7 @@ export const mountEffect = <
 >(
   component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
   props: Props | Effect.Effect<Props, never, RP>,
-  container: globalThis.Element
+  container: WebDomContainer
 ): Effect.Effect<
   Renderer.Root<Model, Msg>,
   never,
@@ -617,7 +524,7 @@ export const mount = <
 >(
   component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
   props: Props | Effect.Effect<Props, never, RP>,
-  container: globalThis.Element
+  container: WebDomContainer
 ): Layer.Layer<
   never,
   never,

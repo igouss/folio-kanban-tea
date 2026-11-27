@@ -58,7 +58,7 @@ describe("Folio Kanban Web (@folio/kanban-app on @universal-ui/host-web)", () =>
               runtimeTag: "web",
               platformLabel: "Web · DOM Host"
             }),
-            dom.container as unknown as Element
+            dom.container
           )
 
           assert.ok(dom.doc.title.includes("Web · DOM Host"))
