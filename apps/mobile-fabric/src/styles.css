@@ -1,0 +1,5 @@
+@import 'tailwindcss/theme.css';
+@import 'tailwindcss/utilities.css' source('.');
+@import '@ng-native/tailwind/native.css';
+
+@source not inline('fixed');

@@ -1,0 +1,14 @@
+# Dependencies & build outputs
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Expo / React Native generated native folders & compiled Tailwind
+apps/mobile-fabric/.expo/
+apps/mobile-fabric/.tailwind/
+apps/mobile-fabric/android/
+apps/mobile-fabric/ios/
+
+# Logs & OS artifacts
+*.log
+.DS_Store

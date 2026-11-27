@@ -1,0 +1,23 @@
+{
+  "name": "folio-kanban-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev:web": "npm --prefix apps/web run dev",
+    "build:web": "npm --prefix apps/web run build",
+    "start:desktop": "npm --prefix apps/desktop-gpui start",
+    "start:mobile": "npm --prefix apps/mobile-fabric start",
+    "android:mobile": "npm --prefix apps/mobile-fabric run android",
+    "ios:mobile": "npm --prefix apps/mobile-fabric run ios",
+    "test:core": "npm --prefix packages/kanban-core test",
+    "test:web": "npm --prefix apps/web test",
+    "test:desktop": "npm --prefix apps/desktop-gpui test",
+    "test:mobile": "npm --prefix apps/mobile-fabric test",
+    "test": "npm run test:core && npm run test:web && npm run test:desktop && npm run test:mobile",
+    "typecheck:web": "npm --prefix apps/web run typecheck",
+    "typecheck:desktop": "npm --prefix apps/desktop-gpui run typecheck",
+    "typecheck:mobile": "npm --prefix apps/mobile-fabric run typecheck",
+    "typecheck": "npm run typecheck:web && npm run typecheck:desktop && npm run typecheck:mobile"
+  }
+}
