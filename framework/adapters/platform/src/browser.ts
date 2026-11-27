@@ -58,9 +58,19 @@ export const makeBrowserViewportLayer = (options?: {
   readonly topInset?: number | undefined
 }): Layer.Layer<Viewport> => {
   const topInset = options?.topInset ?? 0
-  const resolveTarget = (): BrowserViewportTarget | undefined =>
-    options?.target ??
-    (typeof window !== "undefined" ? (window as unknown as BrowserViewportTarget) : undefined)
+  const resolveTarget = (): BrowserViewportTarget | undefined => {
+    if (options?.target !== undefined) return options.target
+    if (
+      typeof window !== "undefined" &&
+      typeof window.addEventListener === "function" &&
+      typeof window.removeEventListener === "function" &&
+      typeof window.innerWidth === "number" &&
+      typeof window.innerHeight === "number"
+    ) {
+      return window
+    }
+    return undefined
+  }
 
   return Layer.succeed(Viewport, {
     current: Effect.sync(() => readBrowserViewport(resolveTarget(), topInset)),

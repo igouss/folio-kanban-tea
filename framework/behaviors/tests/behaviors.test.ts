@@ -78,7 +78,7 @@ describe("@universal-ui/behaviors", () => {
     assert.equal(fuzzy.map((seg) => seg.text).join(""), "Implement GPUI Renderer")
   })
 
-  it("handles React Native style window globals without addEventListener", () => {
+  it("handles React Native style window globals without permanently mutating window", () => {
     const g = globalThis as { window?: Record<string, unknown> | undefined }
     const hadWindow = "window" in g
     const prevWindow = g.window
@@ -89,7 +89,8 @@ describe("@universal-ui/behaviors", () => {
         { text: "Deliver Mobile ", match: false },
         { text: "Fabric", match: true }
       ])
-      assert.equal(typeof g.window["addEventListener"], "function")
+      assert.equal("addEventListener" in g.window, false)
+      assert.equal("removeEventListener" in g.window, false)
     } finally {
       if (hadWindow) g.window = prevWindow
       else delete g.window

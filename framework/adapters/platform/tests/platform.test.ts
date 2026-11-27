@@ -47,6 +47,23 @@ describe("@universal-ui/platform", () => {
     assert.equal(listeners.size, 0)
   })
 
+  it("falls back safely when global window lacks DOM EventTarget methods", async () => {
+    const g = globalThis as { window?: object | undefined }
+    const hadWindow = "window" in g
+    const prevWindow = g.window
+    try {
+      g.window = {}
+      const layer = makeBrowserViewportLayer()
+      const metrics = await Effect.runPromise(
+        Effect.flatMap(Viewport, (vp) => vp.current).pipe(Effect.provide(layer))
+      )
+      assert.deepEqual(metrics, { width: 1280, height: 800, topInset: 0 })
+    } finally {
+      if (hadWindow) g.window = prevWindow
+      else delete g.window
+    }
+  })
+
   it("provides deterministic, crypto, and Node IdGenerator adapters", async () => {
     const seq = await Effect.runPromise(
       Effect.flatMap(IdGenerator, (g) => g.nextId("task")).pipe(
