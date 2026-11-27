@@ -333,8 +333,37 @@ export const ref = (refName: string): Renderer.Ref<unknown> =>
   Renderer.ref<unknown>(refName)
 
 /**
+ * Acquires a renderer host within the current Effect Scope, registers its
+ * finalizer, and builds the shared `Renderer.Renderer | Ui.Host` Context.
+ */
+export const makeScopedHost = <
+  Handle extends {
+    readonly host: Renderer.Host<any>
+    readonly dispose: () => void
+  }
+>(
+  platform: UiPlatform,
+  create: () => Handle
+): Effect.Effect<
+  {
+    readonly handle: Handle
+    readonly context: Context.Context<Renderer.Renderer | Host>
+  },
+  never,
+  Scope.Scope
+> =>
+  Effect.gen(function* () {
+    const handle = create()
+    yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
+    const context = Context.make(Renderer.Renderer, { host: handle.host }).pipe(
+      Context.add(Host, { platform })
+    )
+    return { handle, context }
+  })
+
+/**
  * Shared typed bridge for host packages mounting a Component onto a host container
- * with a pre-built Context (e.g. Renderer.Renderer + Ui.Host + platform host service).
+ * with a pre-built Context (e.g. Renderer.Renderer + Ui.Host).
  */
 export const mountWithHost = <
   Name extends string,

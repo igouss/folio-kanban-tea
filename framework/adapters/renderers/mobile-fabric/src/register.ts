@@ -3,13 +3,16 @@ import type * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import {
   Engine,
-  type StyleSheet as CssStyleSheet,
+  type Conditions,
   getFabricUIManager,
   registerPlatformComponents
 } from "@ng-native/fabric"
 import {
+  Appearance,
   AppRegistry,
+  Dimensions,
   Image,
+  PixelRatio,
   Platform,
   StyleSheet,
   processColor
@@ -24,19 +27,15 @@ import {
   transitionRegistration,
   type RegistrationState
 } from "./fsm.ts"
-import { currentConditions, watchConditions } from "./css/conditions.ts"
-import { attachStyles } from "./css/index.ts"
 
 export type RegisterAppOptions<Required = never> = Readonly<{
   appKey?: string | undefined
-  styleSheet?: CssStyleSheet | undefined
 }> &
   ([Required] extends [never]
     ? { readonly layer?: Layer.Layer<never> | undefined }
     : { readonly layer: Layer.Layer<Required> })
 
 type Registration = { state: RegistrationState }
-
 type Registry = {
   apps: Map<string, Registration>
   isStopSurfaceInstalled: boolean
@@ -50,10 +49,21 @@ const registry = (): Registry => {
   return globalObj[REGISTRY]
 }
 
-const stop = (registration: Registration): void => {
-  const { next, disposeToRun } = transitionRegistration(registration.state, {
-    _tag: "Stop"
-  })
+const currentConditions = (): Conditions => {
+  const { width, height } = Dimensions.get("window")
+  return {
+    width,
+    height,
+    colorScheme: Appearance.getColorScheme() === "dark" ? "dark" : "light",
+    fontScale: PixelRatio.getFontScale()
+  }
+}
+
+const applyRegistration = (
+  registration: Registration,
+  event: Parameters<typeof transitionRegistration>[1]
+): void => {
+  const { next, disposeToRun } = transitionRegistration(registration.state, event)
   registration.state = next
   disposeToRun?.()
 }
@@ -64,14 +74,9 @@ const installStopSurface = (apps: Registry): void => {
   const host = globalThis as { RN$stopSurface?: (surfaceId: number) => void }
   const previousStopSurface = host.RN$stopSurface
   host.RN$stopSurface = (surfaceId) => {
-    apps.apps.forEach((registration) => {
-      const { next, disposeToRun } = transitionRegistration(
-        registration.state,
-        { _tag: "StopSurface", surfaceId }
-      )
-      registration.state = next
-      disposeToRun?.()
-    })
+    apps.apps.forEach((reg) =>
+      applyRegistration(reg, { _tag: "StopSurface", surfaceId })
+    )
     previousStopSurface?.(surfaceId)
   }
 }
@@ -92,9 +97,8 @@ export const registerApp = <
     ? [options?: RegisterAppOptions<never>]
     : [options: RegisterAppOptions<FabricAppRequirements<R, RP, V>>]
 ): void => {
-  const { appKey = "main", styleSheet, layer } = (rest[0] ?? {}) as {
+  const { appKey = "main", layer } = (rest[0] ?? {}) as {
     readonly appKey?: string | undefined
-    readonly styleSheet?: CssStyleSheet | undefined
     readonly layer?: Layer.Layer<FabricAppRequirements<R, RP, V>> | undefined
   }
   registerPlatformComponents(Platform.OS)
@@ -107,24 +111,17 @@ export const registerApp = <
   apps.apps.set(appKey, registration)
 
   const start = (surfaceId: number): void => {
-    stop(registration)
-    const conditions = currentConditions()
+    applyRegistration(registration, { _tag: "Stop" })
     const engine = new Engine(getFabricUIManager(), surfaceId, {
       processColor: (value) => processColor(value),
       resolveAssetSource: (value) =>
         Image.resolveAssetSource(
           value as Parameters<typeof Image.resolveAssetSource>[0]
         ),
-      conditions,
+      conditions: currentConditions(),
       tokens: { "--hairline": { length: StyleSheet.hairlineWidth } },
-      globalStyles: styleSheet ?? null
+      globalStyles: null
     })
-    const unwatch =
-      styleSheet === undefined
-        ? () => {}
-        : watchConditions(
-            attachStyles(engine, { platform: Platform.OS, conditions })
-          )
     const providedLayer: Layer.Layer<FabricAppRequirements<R, RP, V>> =
       layer ?? (Layer.empty as Layer.Layer<FabricAppRequirements<R, RP, V>>)
     const mounted: MountedFabricApp<Model, Msg> = mountAppWithLayer(
@@ -134,23 +131,16 @@ export const registerApp = <
       { platform: Platform.OS },
       providedLayer
     )
-    const { next, disposeToRun } = transitionRegistration(registration.state, {
+    applyRegistration(registration, {
       _tag: "Start",
       surfaceId,
-      dispose: () => {
-        unwatch()
-        mounted.dispose()
-      }
+      dispose: mounted.dispose
     })
-    registration.state = next
-    disposeToRun?.()
   }
 
   AppRegistry.registerRunnable(
     appKey,
-    ({ rootTag }: { rootTag: number | string }) => {
-      start(Number(rootTag))
-    }
+    ({ rootTag }: { rootTag: number | string }) => start(Number(rootTag))
   )
 
   if (registration.state._tag === "Running") {

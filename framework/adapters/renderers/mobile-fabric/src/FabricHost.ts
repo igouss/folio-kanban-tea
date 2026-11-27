@@ -1,14 +1,11 @@
-import { Renderer } from "@effect/ui"
-import type { Component, View } from "@effect/ui"
+import type { Component, Renderer, View } from "@effect/ui"
 import { Ui } from "@universal-ui/core"
 import { claimHost, type Engine, type EngineNode } from "@ng-native/fabric"
-import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Fiber from "effect/Fiber"
 import * as Layer from "effect/Layer"
 import * as Scope from "effect/Scope"
-import * as Fabric from "./Fabric.ts"
 import {
   createActiveTextField,
   initialPressGesture,
@@ -33,9 +30,6 @@ import {
 const CONTROLLED_PROPS: ReadonlySet<string> = new Set(["value"])
 const KEEP_SELECTION = -1
 
-const topLevelTypeOf = (name: string): string =>
-  /^top[A-Z]/.test(name) ? name : `top${name.charAt(0).toUpperCase()}${name.slice(1)}`
-
 const isShallowEqual = (
   a: Readonly<Record<string, unknown>> | undefined,
   b: Readonly<Record<string, unknown>> | undefined
@@ -59,10 +53,10 @@ interface TextFieldState {
   dispose: () => void
 }
 
-interface EventRecord {
-  handlers: Readonly<Record<string, View.Handler<unknown, any>>>
+interface SubmitState {
+  handler: View.Handler<unknown, any>
   dispatch: Renderer.Dispatch
-  listeners: Map<string, () => void>
+  dispose: () => void
 }
 
 export interface FabricHostOptions {
@@ -72,7 +66,7 @@ export interface FabricHostOptions {
 
 export type FabricAppRequirements<R, RP, V extends View.Elements> = Exclude<
   R | RP | Renderer.HostOf<V>,
-  Fabric.Host | Ui.Host | Renderer.Renderer
+  Ui.Host | Renderer.Renderer
 >
 
 export type FabricMountAppOptions<Required> = FabricHostOptions &
@@ -111,7 +105,7 @@ export const makeHost = (
   const pressStates = new WeakMap<EngineNode, PressState>()
   const disabledFlags = new WeakMap<EngineNode, boolean>()
   const textFields = new WeakMap<EngineNode, TextFieldState>()
-  const eventRecords = new WeakMap<EngineNode, EventRecord>()
+  const submitStates = new WeakMap<EngineNode, SubmitState>()
 
   const deferredPressDisposals: Array<() => void> = []
   const postCommitTasks: Array<() => void> = []
@@ -127,10 +121,11 @@ export const makeHost = (
   }
 
   const loosen = (node: EngineNode): EngineNode => {
-    const existing = looseAnchors.get(node)
-    if (existing !== undefined) return existing
-    const anchor = engine.createAnchor()
-    looseAnchors.set(node, anchor)
+    let anchor = looseAnchors.get(node)
+    if (anchor === undefined) {
+      anchor = engine.createAnchor()
+      looseAnchors.set(node, anchor)
+    }
     return anchor
   }
 
@@ -173,10 +168,6 @@ export const makeHost = (
           ])
           engine.remeasure(node)
           break
-        default: {
-          const _exhaustive: never = effect
-          return _exhaustive
-        }
       }
     }
   }
@@ -246,9 +237,7 @@ export const makeHost = (
     })
     const stopLayout = engine.setEventListener(node, "topLayout", (event) => {
       const layout = (event as { nativeEvent?: { layout?: Size } }).nativeEvent?.layout
-      if (layout !== undefined) {
-        size = { width: layout.width, height: layout.height }
-      }
+      if (layout !== undefined) size = { width: layout.width, height: layout.height }
     })
     state.dispose = () => {
       gesture = pressTerminate()
@@ -270,88 +259,73 @@ export const makeHost = (
       textFields.delete(node)
       field.dispose()
     }
-    const events = eventRecords.get(node)
-    if (events !== undefined) {
-      eventRecords.delete(node)
-      events.listeners.forEach((dispose) => dispose())
-      events.listeners.clear()
+    const submit = submitStates.get(node)
+    if (submit !== undefined) {
+      submitStates.delete(node)
+      submit.dispose()
     }
-    for (const child of [...node.children]) {
-      cleanupNode(child)
-    }
+    for (const child of [...node.children]) cleanupNode(child)
     engine.destroyNode(node)
   }
 
   const host: Renderer.Host<EngineNode> = {
     createElement(tag) {
-      const fabricTag = mapFabricTag(tag)
-      const node = engine.createElement(fabricTag)
+      const node = engine.createElement(mapFabricTag(tag))
       claimHost(node)
-      if (tag === "textarea") {
-        engine.setProp(node, "multiline", true)
-      }
+      if (tag === "textarea") engine.setProp(node, "multiline", true)
       return node
     },
 
-    createText(text) {
-      return engine.createText(text)
-    },
+    createText: (text) => engine.createText(text),
 
     setText(node, text) {
-      if (node.kind === "text") {
-        engine.setText(node, text)
-      }
+      if (node.kind === "text") engine.setText(node, text)
     },
 
     setAttr(node, name, value) {
-      if (name === "class") {
-        engine.setClasses(node, value ?? "")
-        return
-      }
       engine.setProp(node, name, value ?? null)
     },
 
     setProp(node, name, value) {
       if (IGNORED_UNIVERSAL_PROPS.has(name)) return
-      if (name === "testId") {
-        engine.setProp(node, "testID", value === undefined ? null : value)
-        return
-      }
-      if (name === "aria-label") {
-        engine.setProp(node, "accessibilityLabel", value === undefined ? null : value)
-        return
-      }
-      if (name === "role") {
-        engine.setProp(node, "role", value === undefined ? null : value)
-        return
-      }
-      if (name === "style") {
-        const nextStyle = normalizeFabricStyle(
-          node.name,
-          value as Readonly<Record<string, unknown>> | undefined
-        )
-        if (!isShallowEqual(lastStyles.get(node), nextStyle)) {
-          if (nextStyle === undefined) lastStyles.delete(node)
-          else lastStyles.set(node, nextStyle)
-          engine.setProp(node, "style", nextStyle ?? null)
+      switch (name) {
+        case "testId":
+          engine.setProp(node, "testID", value ?? null)
+          return
+        case "aria-label":
+          engine.setProp(node, "accessibilityLabel", value ?? null)
+          return
+        case "style": {
+          const nextStyle = normalizeFabricStyle(
+            node.name,
+            value as Readonly<Record<string, unknown>> | undefined
+          )
+          if (!isShallowEqual(lastStyles.get(node), nextStyle)) {
+            if (nextStyle === undefined) lastStyles.delete(node)
+            else lastStyles.set(node, nextStyle)
+            engine.setProp(node, "style", nextStyle ?? null)
+          }
+          return
         }
-        return
+        case "disabled": {
+          const flag = Boolean(value)
+          disabledFlags.set(node, flag)
+          const press = pressStates.get(node)
+          if (press !== undefined) press.isDisabled = flag
+          engine.setProp(node, "accessibilityState", { disabled: flag })
+          return
+        }
+        case "value":
+          if (node.name === "text-input") {
+            dispatchTextField(node, ensureTextField(node), {
+              _tag: "SetDesired",
+              desired: typeof value === "string" ? value : undefined
+            })
+            return
+          }
+          break
       }
-      if (name === "disabled") {
-        const flag = Boolean(value)
-        disabledFlags.set(node, flag)
-        const press = pressStates.get(node)
-        if (press !== undefined) press.isDisabled = flag
-        engine.setProp(node, "accessibilityState", { disabled: flag })
-        return
-      }
-      if (name === "value" && node.name === "text-input") {
-        const field = ensureTextField(node)
-        const desired = typeof value === "string" ? value : undefined
-        dispatchTextField(node, field, { _tag: "SetDesired", desired })
-        return
-      }
-      engine.setProp(node, name, value === undefined ? null : value)
+      engine.setProp(node, name, value ?? null)
     },
 
     insertBefore(parent, node, ref) {
@@ -372,20 +346,13 @@ export const makeHost = (
     remove(node) {
       const p = placed(node)
       const parent = engine.parentNode(p)
-      if (parent !== null) {
-        engine.removeChild(parent, p)
-      }
+      if (parent !== null) engine.removeChild(parent, p)
       if (p !== node) looseAnchors.delete(node)
       cleanupNode(node)
     },
 
-    parentOf(node) {
-      return engine.parentNode(placed(node)) ?? undefined
-    },
-
-    nextOf(node) {
-      return engine.nextSibling(placed(node)) ?? undefined
-    },
+    parentOf: (node) => engine.parentNode(placed(node)) ?? undefined,
+    nextOf: (node) => engine.nextSibling(placed(node)) ?? undefined,
 
     setEvents(node, handlers, dispatch) {
       // 1. Pressability responder for "press"
@@ -416,72 +383,39 @@ export const makeHost = (
         }
       }
 
-      // 3. Any other native Fabric events (layout, scroll, submit, etc.)
-      const otherNames = Object.keys(handlers).filter(
-        (k) => k !== "press" && k !== "changeText" && k !== "keyDown"
-      )
-      if (otherNames.length === 0) {
-        const existing = eventRecords.get(node)
-        if (existing !== undefined) {
-          existing.listeners.forEach((dispose) => dispose())
-          existing.listeners.clear()
-          eventRecords.delete(node)
+      // 3. TextInput "submit" -> topSubmitEditing
+      const submitHandler = handlers["submit"]
+      const existingSubmit = submitStates.get(node)
+      if (submitHandler !== undefined) {
+        if (existingSubmit !== undefined) {
+          existingSubmit.handler = submitHandler
+          existingSubmit.dispatch = dispatch
+        } else {
+          const record: SubmitState = {
+            handler: submitHandler,
+            dispatch,
+            dispose: () => {}
+          }
+          record.dispose = engine.setEventListener(node, "topSubmitEditing", (event) => {
+            const native = (event as { nativeEvent?: { text?: unknown } }).nativeEvent
+            const lc = textFields.get(node)?.lifecycle
+            const text =
+              typeof native?.text === "string"
+                ? native.text
+                : lc !== undefined
+                  ? readTextFieldFallback(lc)
+                  : ""
+            record.dispatch("submit", record.handler, { text })
+          })
+          submitStates.set(node, record)
         }
-        return
-      }
-
-      let record = eventRecords.get(node)
-      if (record === undefined) {
-        record = { handlers, dispatch, listeners: new Map() }
-        eventRecords.set(node, record)
-      } else {
-        record.handlers = handlers
-        record.dispatch = dispatch
-      }
-
-      for (const [name, dispose] of record.listeners) {
-        if (!otherNames.includes(name)) {
-          dispose()
-          record.listeners.delete(name)
-        }
-      }
-      for (const name of otherNames) {
-        if (!record.listeners.has(name)) {
-          const current = record
-          const fabricEvent =
-            name === "submit" ? "topSubmitEditing" : topLevelTypeOf(name)
-          record.listeners.set(
-            name,
-            engine.setEventListener(node, fabricEvent, (event) => {
-              const handler = current.handlers[name]
-              if (handler === undefined) return
-              const native = (event as { nativeEvent?: Record<string, unknown> }).nativeEvent ?? {}
-              const payload =
-                name === "layout"
-                  ? (native["layout"] ?? { x: 0, y: 0, width: 0, height: 0 })
-                  : name === "scroll"
-                    ? ((native["contentOffset"] as Record<string, unknown> | undefined) ?? { x: 0, y: 0 })
-                    : name === "submit"
-                      ? (() => {
-                          const lc = textFields.get(node)?.lifecycle
-                          const fallback =
-                            lc !== undefined ? readTextFieldFallback(lc) : ""
-                          return {
-                            text:
-                              typeof native["text"] === "string"
-                                ? native["text"]
-                                : fallback
-                          }
-                        })()
-                      : native
-              current.dispatch(name, handler, payload)
-            })
-          )
-        }
+      } else if (existingSubmit !== undefined) {
+        existingSubmit.dispose()
+        submitStates.delete(node)
       }
     },
 
-    elements: [Fabric.name, Ui.name],
+    elements: [Ui.name],
     controlled: CONTROLLED_PROPS,
     runsMounts: true,
 
@@ -496,17 +430,17 @@ export const makeHost = (
     }
   }
 
-  const dispose = (): void => {
-    for (const child of [...container.children]) {
-      host.remove(child)
+  return {
+    host,
+    container,
+    dispose: () => {
+      for (const child of [...container.children]) host.remove(child)
+      deferredPressDisposals.splice(0).forEach((fn) => fn())
+      engine.removeChild(engine.root, container)
+      engine.destroyNode(container)
+      engine.commit()
     }
-    deferredPressDisposals.splice(0).forEach((fn) => fn())
-    engine.removeChild(engine.root, container)
-    engine.destroyNode(container)
-    engine.commit()
   }
-
-  return { host, container, dispose }
 }
 
 export interface MountedFabricApp<Model, Msg> {
@@ -515,17 +449,6 @@ export interface MountedFabricApp<Model, Msg> {
   readonly root: () => Renderer.Root<Model, Msg> | undefined
   readonly dispose: () => void
 }
-
-const makeScopedHost = (engine: Engine, options: FabricHostOptions = {}) =>
-  Effect.gen(function* () {
-    const handle = makeHost(engine, options)
-    yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
-    const context = Context.make(Renderer.Renderer, { host: handle.host }).pipe(
-      Context.add(Fabric.Host, { platform: options.platform ?? "unknown" }),
-      Context.add(Ui.Host, { platform: "mobile" })
-    )
-    return { handle, context }
-  })
 
 export const mount = <
   Name extends string,
@@ -547,7 +470,9 @@ export const mount = <
   FabricAppRequirements<R, RP, V> | Scope.Scope
 > =>
   Effect.gen(function* () {
-    const { handle, context } = yield* makeScopedHost(engine, options)
+    const { handle, context } = yield* Ui.makeScopedHost("mobile", () =>
+      makeHost(engine, options)
+    )
     return yield* Ui.mountWithHost(component, props, handle.container, context)
   })
 
@@ -575,29 +500,19 @@ export const mountAppWithLayer = <
     resolveReady = resolve
     rejectReady = reject
   })
-  // Prevent unhandled rejection warnings if a caller disposes before awaiting `ready`.
   ready.catch(() => {})
 
-  const program: Effect.Effect<Renderer.Root<Model, Msg>> = mount(
-    component,
-    props,
-    engine,
-    options
-  ).pipe(Effect.provide(layer), Scope.provide(scope))
-
   const fiber = Effect.runFork(
-    program.pipe(
+    mount(component, props, engine, options).pipe(
+      Effect.provide(layer),
+      Scope.provide(scope),
       Effect.tap((root) =>
         Effect.sync(() => {
           currentRoot = root
           resolveReady(root)
         })
       ),
-      Effect.tapCause((cause) =>
-        Effect.sync(() => {
-          rejectReady(cause)
-        })
-      )
+      Effect.tapCause((cause) => Effect.sync(() => rejectReady(cause)))
     )
   )
 

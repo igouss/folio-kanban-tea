@@ -1,6 +1,4 @@
-import { Renderer } from "@effect/ui"
-import type { Component, Head, View } from "@effect/ui"
-import * as Context from "effect/Context"
+import type { Component, Head, Renderer, View } from "@effect/ui"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
@@ -8,6 +6,7 @@ import { Ui, type UiStyle } from "@universal-ui/core"
 import {
   initialPointerState,
   transitionPointer,
+  type PointerEvent,
   type PointerState
 } from "./fsm.ts"
 import { toCssPropertyName, uiStyleToCss } from "./style.ts"
@@ -87,43 +86,51 @@ export interface WebHostHandle {
   readonly dispose: () => void
 }
 
-const domTagFor = (uiTag: string): string => {
-  switch (uiTag) {
-    case "button":
-      return "button"
-    case "text":
-      return "span"
-    case "input":
-      return "input"
-    case "textarea":
-      return "textarea"
-    default:
-      return "div"
-  }
+const DOM_TAGS: Readonly<Record<string, string>> = {
+  button: "button",
+  text: "span",
+  input: "input",
+  textarea: "textarea"
 }
 
 export const makeHost = (doc: WebDomDocument): WebHostHandle => {
   const metas = new WeakMap<WebDomNode, NodeMeta>()
   const trackedNodes = new Set<WebDomNode>()
 
-  const applyCss = (el: WebDomElement, meta: NodeMeta): void => {
-    let extra: UiStyle | undefined
-    switch (meta.pointer._tag) {
-      case "Pressed":
-        extra = meta.activeStyle ?? meta.hoverStyle
-        break
-      case "Hovered":
-        extra = meta.hoverStyle
-        break
-      case "Idle":
-      case "Disabled":
-        extra = undefined
-        break
-      default: {
-        const _exhaustive: never = meta.pointer
-        extra = _exhaustive
-      }
+  const setOrRemoveAttr = (
+    el: WebDomElement,
+    key: string,
+    value: string | undefined
+  ): void => {
+    if (value === undefined) el.removeAttribute(key)
+    else el.setAttribute(key, value)
+  }
+
+  const syncListener = (
+    el: WebDomElement,
+    meta: NodeMeta,
+    domEvent: string,
+    active: boolean,
+    listener: WebDomEventListener
+  ): void => {
+    const existing = meta.listeners.get(domEvent)
+    if (active && existing === undefined) {
+      el.addEventListener(domEvent, listener)
+      meta.listeners.set(domEvent, listener)
+    } else if (!active && existing !== undefined) {
+      el.removeEventListener(domEvent, existing)
+      meta.listeners.delete(domEvent)
     }
+  }
+
+  const applyCss = (el: WebDomElement, meta: NodeMeta): void => {
+    const extra =
+      meta.pointer._tag === "Pressed"
+        ? (meta.activeStyle ?? meta.hoverStyle)
+        : meta.pointer._tag === "Hovered"
+          ? meta.hoverStyle
+          : undefined
+
     const next: Record<string, string> = {
       ...uiStyleToCss(meta.uiTag, meta.baseStyle, extra)
     }
@@ -146,9 +153,7 @@ export const makeHost = (doc: WebDomDocument): WebHostHandle => {
       nextProps.set(toCssPropertyName(key), value)
     }
     for (const prevProp of meta.appliedCssKeys) {
-      if (!nextProps.has(prevProp)) {
-        el.style.removeProperty(prevProp)
-      }
+      if (!nextProps.has(prevProp)) el.style.removeProperty(prevProp)
     }
     meta.appliedCssKeys.clear()
     for (const [prop, value] of nextProps) {
@@ -157,58 +162,23 @@ export const makeHost = (doc: WebDomDocument): WebHostHandle => {
     }
   }
 
-  const ensureInteractionListeners = (
+  const bindPointerEvents = (
     el: WebDomElement,
-    meta: NodeMeta
+    meta: NodeMeta,
+    pairs: ReadonlyArray<readonly [string, PointerEvent]>
   ): void => {
-    const needsHover = meta.hoverStyle !== undefined
-    const needsActive = meta.activeStyle !== undefined
-
-    if (needsHover && !meta.listeners.has("__hoverEnter")) {
-      const onEnter: WebDomEventListener = () => {
-        meta.pointer = transitionPointer(meta.pointer, "enter")
+    for (const [domEvent, pointerEvent] of pairs) {
+      syncListener(el, meta, domEvent, true, () => {
+        meta.pointer = transitionPointer(meta.pointer, pointerEvent)
         applyCss(el, meta)
-      }
-      const onLeave: WebDomEventListener = () => {
-        meta.pointer = transitionPointer(meta.pointer, "leave")
-        applyCss(el, meta)
-      }
-      el.addEventListener("mouseenter", onEnter)
-      el.addEventListener("mouseleave", onLeave)
-      meta.listeners.set("__hoverEnter", onEnter)
-      meta.listeners.set("__hoverLeave", onLeave)
-    }
-
-    if (needsActive && !meta.listeners.has("__activeDown")) {
-      const onDown: WebDomEventListener = () => {
-        meta.pointer = transitionPointer(meta.pointer, "down")
-        applyCss(el, meta)
-      }
-      const onUp: WebDomEventListener = () => {
-        meta.pointer = transitionPointer(meta.pointer, "up")
-        applyCss(el, meta)
-      }
-      el.addEventListener("mousedown", onDown)
-      el.addEventListener("mouseup", onUp)
-      meta.listeners.set("__activeDown", onDown)
-      meta.listeners.set("__activeUp", onUp)
+      })
     }
   }
 
   const cleanupNode = (node: WebDomNode): void => {
     const meta = metas.get(node)
     if (meta !== undefined && isWebDomElement(node)) {
-      for (const [key, listener] of meta.listeners) {
-        const domEvent =
-          key === "__hoverEnter"
-            ? "mouseenter"
-            : key === "__hoverLeave"
-              ? "mouseleave"
-              : key === "__activeDown"
-                ? "mousedown"
-                : key === "__activeUp"
-                  ? "mouseup"
-                  : key
+      for (const [domEvent, listener] of meta.listeners) {
         node.removeEventListener(domEvent, listener)
       }
       meta.listeners.clear()
@@ -222,12 +192,9 @@ export const makeHost = (doc: WebDomDocument): WebHostHandle => {
 
   const host: Renderer.Host<WebDomNode> = {
     createElement(tag) {
-      const el = doc.createElement(domTagFor(tag))
-      if (tag === "button") {
-        el.setAttribute("type", "button")
-      } else if (tag === "input") {
-        el.setAttribute("type", "text")
-      }
+      const el = doc.createElement(DOM_TAGS[tag] ?? "div")
+      if (tag === "button") el.setAttribute("type", "button")
+      else if (tag === "input") el.setAttribute("type", "text")
       const meta: NodeMeta = {
         uiTag: tag,
         baseStyle: undefined,
@@ -247,119 +214,124 @@ export const makeHost = (doc: WebDomDocument): WebHostHandle => {
       return el
     },
 
-    createText(text) {
-      return doc.createTextNode(text)
-    },
-
-    createContainer() {
-      return doc.createDocumentFragment()
-    },
+    createText: (text) => doc.createTextNode(text),
+    createContainer: () => doc.createDocumentFragment(),
 
     setText(node, text) {
-      if (node.nodeValue !== text) {
-        node.nodeValue = text
-      }
+      if (node.nodeValue !== text) node.nodeValue = text
     },
 
     setAttr(node, attrName, value) {
-      if (!isWebDomElement(node)) return
-      if (value === undefined) node.removeAttribute(attrName)
-      else node.setAttribute(attrName, value)
+      if (isWebDomElement(node)) setOrRemoveAttr(node, attrName, value)
     },
 
     setProp(node, propName, value) {
       if (!isWebDomElement(node)) return
-      const el = node
       const meta = metas.get(node)
 
-      if (propName === "style" && meta !== undefined) {
-        meta.baseStyle = value as UiStyle | undefined
-        applyCss(el, meta)
-        return
-      }
-      if (propName === "hoverStyle" && meta !== undefined) {
-        meta.hoverStyle = value as UiStyle | undefined
-        ensureInteractionListeners(el, meta)
-        return
-      }
-      if (propName === "activeStyle" && meta !== undefined) {
-        meta.activeStyle = value as UiStyle | undefined
-        ensureInteractionListeners(el, meta)
-        return
-      }
-      if (propName === "horizontal" && meta !== undefined) {
-        meta.horizontal = Boolean(value)
-        applyCss(el, meta)
-        return
-      }
-      if (propName === "numberOfLines" && meta !== undefined) {
-        meta.numberOfLines = typeof value === "number" ? value : undefined
-        applyCss(el, meta)
-        return
-      }
-      if (propName === "testId") {
-        if (typeof value === "string" && value.length > 0) {
-          el.setAttribute("data-testid", value)
-        } else {
-          el.removeAttribute("data-testid")
+      switch (propName) {
+        case "style":
+          if (meta !== undefined) {
+            meta.baseStyle = value as UiStyle | undefined
+            applyCss(node, meta)
+          }
+          return
+        case "hoverStyle":
+          if (meta !== undefined) {
+            meta.hoverStyle = value as UiStyle | undefined
+            if (meta.hoverStyle !== undefined) {
+              bindPointerEvents(node, meta, [
+                ["mouseenter", "enter"],
+                ["mouseleave", "leave"]
+              ])
+            }
+          }
+          return
+        case "activeStyle":
+          if (meta !== undefined) {
+            meta.activeStyle = value as UiStyle | undefined
+            if (meta.activeStyle !== undefined) {
+              bindPointerEvents(node, meta, [
+                ["mousedown", "down"],
+                ["mouseup", "up"]
+              ])
+            }
+          }
+          return
+        case "horizontal":
+          if (meta !== undefined) {
+            meta.horizontal = Boolean(value)
+            applyCss(node, meta)
+          }
+          return
+        case "numberOfLines":
+          if (meta !== undefined) {
+            meta.numberOfLines = typeof value === "number" ? value : undefined
+            applyCss(node, meta)
+          }
+          return
+        case "testId":
+          setOrRemoveAttr(
+            node,
+            "data-testid",
+            typeof value === "string" && value.length > 0 ? value : undefined
+          )
+          return
+        case "disabled": {
+          const flag = Boolean(value)
+          if (meta !== undefined) {
+            meta.pointer = transitionPointer(meta.pointer, flag ? "disable" : "enable")
+            applyCss(node, meta)
+          }
+          if ("disabled" in node) node.disabled = flag
+          setOrRemoveAttr(node, "aria-disabled", flag ? "true" : undefined)
+          return
         }
-        return
-      }
-      if (propName === "disabled") {
-        const flag = Boolean(value)
-        if (meta !== undefined) {
-          meta.pointer = transitionPointer(meta.pointer, flag ? "disable" : "enable")
-          applyCss(el, meta)
+        case "value": {
+          const desired = typeof value === "string" ? value : ""
+          if ("value" in node && node.value !== desired) node.value = desired
+          return
         }
-        if ("disabled" in el) {
-          el.disabled = flag
-        }
-        if (flag) el.setAttribute("aria-disabled", "true")
-        else el.removeAttribute("aria-disabled")
-        return
-      }
-      if (propName === "value") {
-        const desired = typeof value === "string" ? value : ""
-        if ("value" in el && el.value !== desired) {
-          el.value = desired
-        }
-        return
-      }
-      if (propName === "placeholder") {
-        if (typeof value === "string") el.setAttribute("placeholder", value)
-        else el.removeAttribute("placeholder")
-        return
-      }
-      if (propName === "placeholderTextColor") {
-        if (typeof value === "string") {
-          el.style.setProperty("--placeholder-color", value)
-        } else {
-          el.style.removeProperty("--placeholder-color")
-        }
-        return
-      }
-      if (propName === "minRows" && meta?.uiTag === "textarea") {
-        if (typeof value === "number") el.setAttribute("rows", String(value))
-        return
-      }
-      if (propName === "autoFocus" && value === true) {
-        el.setAttribute("autofocus", "")
-        queueMicrotask(() => {
-          if (el.isConnected) el.focus()
-        })
-        return
-      }
-      if (
-        propName === "role" ||
-        propName === "tabIndex" ||
-        propName.startsWith("aria-")
-      ) {
-        const attrKey = propName === "tabIndex" ? "tabindex" : propName
-        if (value === undefined || value === null) {
-          el.removeAttribute(attrKey)
-        } else {
-          el.setAttribute(attrKey, String(value))
-        }
+        case "placeholder":
+          setOrRemoveAttr(
+            node,
+            "placeholder",
+            typeof value === "string" ? value : undefined
+          )
+          return
+        case "placeholderTextColor":
+          if (typeof value === "string") {
+            node.style.setProperty("--placeholder-color", value)
+          } else {
+            node.style.removeProperty("--placeholder-color")
+          }
+          return
+        case "minRows":
+          if (meta?.uiTag === "textarea" && typeof value === "number") {
+            node.setAttribute("rows", String(value))
+          }
+          return
+        case "autoFocus":
+          if (value === true) {
+            node.setAttribute("autofocus", "")
+            queueMicrotask(() => {
+              if (node.isConnected) node.focus()
+            })
+          }
+          return
+        default:
+          if (
+            propName === "role" ||
+            propName === "tabIndex" ||
+            propName.startsWith("aria-")
+          ) {
+            const attrKey = propName === "tabIndex" ? "tabindex" : propName
+            setOrRemoveAttr(
+              node,
+              attrKey,
+              value === undefined || value === null ? undefined : String(value)
+            )
+          }
       }
     },
 
@@ -368,78 +340,68 @@ export const makeHost = (doc: WebDomDocument): WebHostHandle => {
     },
 
     remove(node) {
-      const parent = node.parentNode
-      if (parent !== null) parent.removeChild(node)
+      node.parentNode?.removeChild(node)
       cleanupNode(node)
     },
 
-    parentOf(node) {
-      return node.parentNode ?? undefined
-    },
-
-    nextOf(node) {
-      return node.nextSibling ?? undefined
-    },
+    parentOf: (node) => node.parentNode ?? undefined,
+    nextOf: (node) => node.nextSibling ?? undefined,
 
     setEvents(node, handlers, dispatch) {
       if (!isWebDomElement(node)) return
-      const el = node
       const meta = metas.get(node)
       if (meta === undefined) return
       meta.handlers = handlers
       meta.dispatch = dispatch
 
-      const ensureListener = (
-        domEvent: string,
-        active: boolean,
-        listener: WebDomEventListener
-      ) => {
-        const existing = meta.listeners.get(domEvent)
-        if (active && existing === undefined) {
-          el.addEventListener(domEvent, listener)
-          meta.listeners.set(domEvent, listener)
-        } else if (!active && existing !== undefined) {
-          el.removeEventListener(domEvent, existing)
-          meta.listeners.delete(domEvent)
-        }
-      }
+      const readInputText = () =>
+        "value" in node && node.value !== undefined ? String(node.value) : ""
 
-      ensureListener("click", handlers["press"] !== undefined, () => {
+      syncListener(node, meta, "click", handlers["press"] !== undefined, () => {
         if (meta.pointer._tag === "Disabled" || meta.dispatch === undefined) return
         const h = meta.handlers["press"]
         if (h !== undefined) meta.dispatch("press", h, {})
       })
 
-      ensureListener("input", handlers["changeText"] !== undefined, () => {
-        if (meta.dispatch === undefined) return
-        const h = meta.handlers["changeText"]
-        if (h !== undefined) {
-          const text = "value" in el && el.value !== undefined ? String(el.value) : ""
-          meta.dispatch("changeText", h, { text })
+      syncListener(
+        node,
+        meta,
+        "input",
+        handlers["changeText"] !== undefined,
+        () => {
+          const h = meta.handlers["changeText"]
+          if (h !== undefined && meta.dispatch !== undefined) {
+            meta.dispatch("changeText", h, { text: readInputText() })
+          }
         }
-      })
+      )
 
-      const needsKeyDown =
-        handlers["keyDown"] !== undefined || handlers["submit"] !== undefined
-      ensureListener("keydown", needsKeyDown, (ke) => {
-        if (meta.dispatch === undefined) return
-        if (ke.key === "Enter" && meta.handlers["submit"] !== undefined) {
-          ke.preventDefault()
-          const text = "value" in el && el.value !== undefined ? String(el.value) : ""
-          meta.dispatch("submit", meta.handlers["submit"], { text })
-          return
+      syncListener(
+        node,
+        meta,
+        "keydown",
+        handlers["keyDown"] !== undefined || handlers["submit"] !== undefined,
+        (ke) => {
+          if (meta.dispatch === undefined) return
+          if (ke.key === "Enter" && meta.handlers["submit"] !== undefined) {
+            ke.preventDefault()
+            meta.dispatch("submit", meta.handlers["submit"], {
+              text: readInputText()
+            })
+            return
+          }
+          const h = meta.handlers["keyDown"]
+          if (h !== undefined) {
+            meta.dispatch("keyDown", h, {
+              key: ke.key ?? "",
+              shift: ke.shiftKey === true,
+              ctrl: ke.ctrlKey === true,
+              alt: ke.altKey === true,
+              meta: ke.metaKey === true
+            })
+          }
         }
-        const h = meta.handlers["keyDown"]
-        if (h !== undefined) {
-          meta.dispatch("keyDown", h, {
-            key: ke.key ?? "",
-            shift: ke.shiftKey === true,
-            ctrl: ke.ctrlKey === true,
-            alt: ke.altKey === true,
-            meta: ke.metaKey === true
-          })
-        }
-      })
+      )
     },
 
     elements: [Ui.name],
@@ -447,9 +409,7 @@ export const makeHost = (doc: WebDomDocument): WebHostHandle => {
     runsMounts: true,
 
     head(folded: Head.Head) {
-      if (folded.title !== undefined) {
-        doc.title = folded.title
-      }
+      if (folded.title !== undefined) doc.title = folded.title
     },
 
     viewTransition(update) {
@@ -461,29 +421,23 @@ export const makeHost = (doc: WebDomDocument): WebHostHandle => {
     }
   }
 
-  const dispose = (): void => {
-    for (const node of [...trackedNodes]) {
-      cleanupNode(node)
+  return {
+    host,
+    dispose: () => {
+      for (const node of [...trackedNodes]) cleanupNode(node)
     }
   }
-
-  return { host, dispose }
 }
-
-const makeScopedHost = (doc: WebDomDocument) =>
-  Effect.gen(function* () {
-    const handle = makeHost(doc)
-    yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
-    const context = Context.make(Renderer.Renderer, { host: handle.host }).pipe(
-      Context.add(Ui.Host, { platform: "web" })
-    )
-    return { handle, context }
-  })
 
 export const layer = (
   doc: WebDomDocument
 ): Layer.Layer<Renderer.Renderer | Ui.Host> =>
-  Layer.effectContext(Effect.map(makeScopedHost(doc), ({ context }) => context))
+  Layer.effectContext(
+    Effect.map(
+      Ui.makeScopedHost("web", () => makeHost(doc)),
+      ({ context }) => context
+    )
+  )
 
 export const mountEffect = <
   Name extends string,
@@ -508,7 +462,7 @@ export const mountEffect = <
 > =>
   Effect.gen(function* () {
     const doc = container.ownerDocument ?? document
-    const { context } = yield* makeScopedHost(doc)
+    const { context } = yield* Ui.makeScopedHost("web", () => makeHost(doc))
     return yield* Ui.mountWithHost(component, props, container, context)
   })
 

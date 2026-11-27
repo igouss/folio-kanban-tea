@@ -58,7 +58,6 @@ export const mapFabricTag = (tag: string): string => {
   switch (tag) {
     case "box":
     case "button":
-    case "pressable":
       return "view"
     case "scroll":
       return "scroll-view"

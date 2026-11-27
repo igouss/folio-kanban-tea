@@ -27,7 +27,7 @@ const isStillOnControl = (size: Size | undefined, dx: number, dy: number): boole
 }
 
 /**
- * Explicit touch pressability gesture state machine:
+ * Touch pressability gesture state machine:
  * Idle -> Pressed { origin } -> (Cancelled | Idle [emit press])
  */
 export type PressGestureState =
@@ -37,11 +37,7 @@ export type PressGestureState =
 
 export type PressGestureEvent =
   | { readonly _tag: "Grant"; readonly origin: Point }
-  | {
-      readonly _tag: "Move"
-      readonly point: Point
-      readonly size: Size | undefined
-    }
+  | { readonly _tag: "Move"; readonly point: Point; readonly size: Size | undefined }
   | { readonly _tag: "Release" }
   | { readonly _tag: "Terminate" }
 
@@ -52,72 +48,31 @@ export interface PressGestureTransition {
 
 export const initialPressGesture: PressGestureState = { _tag: "Idle" }
 
-const exhaustivePressEvent = (event: never): PressGestureTransition => event
-
 export const transitionPressGesture = (
   state: PressGestureState,
   event: PressGestureEvent
 ): PressGestureTransition => {
-  switch (state._tag) {
-    case "Idle":
-      switch (event._tag) {
-        case "Grant":
-          return {
-            next: { _tag: "Pressed", origin: event.origin },
-            shouldEmitPress: false
-          }
-        case "Move":
-        case "Release":
-        case "Terminate":
-          return { next: state, shouldEmitPress: false }
-        default:
-          return exhaustivePressEvent(event)
+  switch (event._tag) {
+    case "Grant":
+      return { next: { _tag: "Pressed", origin: event.origin }, shouldEmitPress: false }
+    case "Move":
+      if (state._tag !== "Pressed") return { next: state, shouldEmitPress: false }
+      return {
+        next: isStillOnControl(
+          event.size,
+          event.point.x - state.origin.x,
+          event.point.y - state.origin.y
+        )
+          ? state
+          : { _tag: "Cancelled" },
+        shouldEmitPress: false
       }
-
-    case "Pressed":
-      switch (event._tag) {
-        case "Grant":
-          return {
-            next: { _tag: "Pressed", origin: event.origin },
-            shouldEmitPress: false
-          }
-        case "Move":
-          return {
-            next: isStillOnControl(
-              event.size,
-              event.point.x - state.origin.x,
-              event.point.y - state.origin.y
-            )
-              ? state
-              : { _tag: "Cancelled" },
-            shouldEmitPress: false
-          }
-        case "Release":
-          return { next: initialPressGesture, shouldEmitPress: true }
-        case "Terminate":
-          return { next: initialPressGesture, shouldEmitPress: false }
-        default:
-          return exhaustivePressEvent(event)
-      }
-
-    case "Cancelled":
-      switch (event._tag) {
-        case "Grant":
-          return {
-            next: { _tag: "Pressed", origin: event.origin },
-            shouldEmitPress: false
-          }
-        case "Move":
-          return { next: state, shouldEmitPress: false }
-        case "Release":
-        case "Terminate":
-          return { next: initialPressGesture, shouldEmitPress: false }
-        default:
-          return exhaustivePressEvent(event)
-      }
-
+    case "Release":
+      return { next: initialPressGesture, shouldEmitPress: state._tag === "Pressed" }
+    case "Terminate":
+      return { next: initialPressGesture, shouldEmitPress: false }
     default: {
-      const _exhaustive: never = state
+      const _exhaustive: never = event
       return _exhaustive
     }
   }
@@ -133,9 +88,7 @@ export const pressMove = (
 ): PressGestureState =>
   transitionPressGesture(state, { _tag: "Move", point, size }).next
 
-export const pressRelease = (
-  state: PressGestureState
-): PressGestureTransition =>
+export const pressRelease = (state: PressGestureState): PressGestureTransition =>
   transitionPressGesture(state, { _tag: "Release" })
 
 export const pressTerminate = (
@@ -144,7 +97,7 @@ export const pressTerminate = (
   transitionPressGesture(state, { _tag: "Terminate" }).next
 
 /**
- * Explicit immutable controlled TextInput lifecycle state machine:
+ * Controlled TextInput lifecycle state machine:
  * Active -> Disposed (terminal; guards deferred animation-frame reconciliation).
  */
 export type TextFieldLifecycle =
@@ -159,11 +112,7 @@ export type TextFieldLifecycle =
 
 export type TextFieldEvent =
   | { readonly _tag: "SetDesired"; readonly desired: string | undefined }
-  | {
-      readonly _tag: "ReceiveNative"
-      readonly text: string
-      readonly eventCount: number | undefined
-    }
+  | { readonly _tag: "ReceiveNative"; readonly text: string; readonly eventCount: number | undefined }
   | { readonly _tag: "Reconcile" }
   | { readonly _tag: "Dispose" }
 
@@ -173,11 +122,7 @@ export type TextFieldEffect =
   | { readonly _tag: "SchedulePostCommitReconcile" }
   | { readonly _tag: "EmitChangeText"; readonly text: string }
   | { readonly _tag: "ScheduleFrameReconcile" }
-  | {
-      readonly _tag: "DispatchSetTextAndSelection"
-      readonly eventCount: number
-      readonly text: string
-    }
+  | { readonly _tag: "DispatchSetTextAndSelection"; readonly eventCount: number; readonly text: string }
 
 export interface TextFieldTransition {
   readonly next: TextFieldLifecycle
@@ -186,8 +131,6 @@ export interface TextFieldTransition {
 
 const NO_TEXT_FIELD_EFFECTS: ReadonlyArray<TextFieldEffect> = []
 const DISPOSED_TEXT_FIELD: TextFieldLifecycle = { _tag: "Disposed" }
-
-const exhaustiveTextFieldEvent = (event: never): TextFieldTransition => event
 
 export const createActiveTextField = (): Extract<TextFieldLifecycle, { _tag: "Active" }> => ({
   _tag: "Active",
@@ -201,128 +144,75 @@ export const transitionTextField = (
   state: TextFieldLifecycle,
   event: TextFieldEvent
 ): TextFieldTransition => {
-  switch (state._tag) {
-    case "Active":
-      switch (event._tag) {
-        case "SetDesired": {
-          const changed = state.desiredValue !== event.desired
-          const lastNativeText =
-            state.lastNativeText === undefined ? event.desired : state.lastNativeText
-          const needsEventCount = state.writtenEventCount !== state.eventCount
-          const effects: Array<TextFieldEffect> = []
-          if (changed) {
-            effects.push({ _tag: "SetTextProp", text: event.desired ?? null })
-          }
-          if (needsEventCount) {
-            effects.push({
-              _tag: "SetMostRecentEventCount",
-              eventCount: state.eventCount
-            })
-          }
-          effects.push({ _tag: "SchedulePostCommitReconcile" })
-          return {
-            next: {
-              _tag: "Active",
-              desiredValue: event.desired,
-              lastNativeText,
-              eventCount: state.eventCount,
-              writtenEventCount: needsEventCount
-                ? state.eventCount
-                : state.writtenEventCount
-            },
-            effects
-          }
-        }
-        case "ReceiveNative": {
-          const nextEventCount = event.eventCount ?? state.eventCount + 1
-          return {
-            next: {
-              _tag: "Active",
-              desiredValue: state.desiredValue,
-              lastNativeText: event.text,
-              eventCount: nextEventCount,
-              writtenEventCount: state.writtenEventCount
-            },
-            effects: [
-              { _tag: "EmitChangeText", text: event.text },
-              { _tag: "ScheduleFrameReconcile" }
-            ]
-          }
-        }
-        case "Reconcile": {
-          const desired = state.desiredValue
-          if (desired === undefined || state.lastNativeText === desired) {
-            return { next: state, effects: NO_TEXT_FIELD_EFFECTS }
-          }
-          return {
-            next: {
-              ...state,
-              lastNativeText: desired
-            },
-            effects: [
-              {
-                _tag: "DispatchSetTextAndSelection",
-                eventCount: state.eventCount,
-                text: desired
-              }
-            ]
-          }
-        }
-        case "Dispose":
-          return { next: DISPOSED_TEXT_FIELD, effects: NO_TEXT_FIELD_EFFECTS }
-        default:
-          return exhaustiveTextFieldEvent(event)
-      }
+  if (state._tag === "Disposed") {
+    return { next: state, effects: NO_TEXT_FIELD_EFFECTS }
+  }
 
-    case "Disposed":
-      switch (event._tag) {
-        case "SetDesired":
-        case "ReceiveNative":
-        case "Reconcile":
-        case "Dispose":
-          return { next: state, effects: NO_TEXT_FIELD_EFFECTS }
-        default:
-          return exhaustiveTextFieldEvent(event)
+  switch (event._tag) {
+    case "SetDesired": {
+      const effects: Array<TextFieldEffect> = []
+      if (state.desiredValue !== event.desired) {
+        effects.push({ _tag: "SetTextProp", text: event.desired ?? null })
       }
-
+      const needsEventCount = state.writtenEventCount !== state.eventCount
+      if (needsEventCount) {
+        effects.push({ _tag: "SetMostRecentEventCount", eventCount: state.eventCount })
+      }
+      effects.push({ _tag: "SchedulePostCommitReconcile" })
+      return {
+        next: {
+          ...state,
+          desiredValue: event.desired,
+          lastNativeText: state.lastNativeText === undefined ? event.desired : state.lastNativeText,
+          writtenEventCount: needsEventCount ? state.eventCount : state.writtenEventCount
+        },
+        effects
+      }
+    }
+    case "ReceiveNative":
+      return {
+        next: {
+          ...state,
+          lastNativeText: event.text,
+          eventCount: event.eventCount ?? state.eventCount + 1
+        },
+        effects: [
+          { _tag: "EmitChangeText", text: event.text },
+          { _tag: "ScheduleFrameReconcile" }
+        ]
+      }
+    case "Reconcile": {
+      const desired = state.desiredValue
+      if (desired === undefined || state.lastNativeText === desired) {
+        return { next: state, effects: NO_TEXT_FIELD_EFFECTS }
+      }
+      return {
+        next: { ...state, lastNativeText: desired },
+        effects: [{ _tag: "DispatchSetTextAndSelection", eventCount: state.eventCount, text: desired }]
+      }
+    }
+    case "Dispose":
+      return { next: DISPOSED_TEXT_FIELD, effects: NO_TEXT_FIELD_EFFECTS }
     default: {
-      const _exhaustive: never = state
+      const _exhaustive: never = event
       return _exhaustive
     }
   }
 }
 
-export const readTextFieldFallback = (state: TextFieldLifecycle): string => {
-  switch (state._tag) {
-    case "Active":
-      return state.lastNativeText ?? state.desiredValue ?? ""
-    case "Disposed":
-      return ""
-    default: {
-      const _exhaustive: never = state
-      return _exhaustive
-    }
-  }
-}
+export const readTextFieldFallback = (state: TextFieldLifecycle): string =>
+  state._tag === "Active" ? (state.lastNativeText ?? state.desiredValue ?? "") : ""
 
 /**
- * Explicit Fabric surface registration lifecycle state machine:
+ * Fabric surface registration lifecycle state machine:
  * Stopped <-> Running { surfaceId, dispose }.
  */
 export type RegistrationState =
   | { readonly _tag: "Stopped" }
-  | {
-      readonly _tag: "Running"
-      readonly surfaceId: number
-      readonly dispose: () => void
-    }
+  | { readonly _tag: "Running"; readonly surfaceId: number; readonly dispose: () => void }
 
 export type RegistrationEvent =
-  | {
-      readonly _tag: "Start"
-      readonly surfaceId: number
-      readonly dispose: () => void
-    }
+  | { readonly _tag: "Start"; readonly surfaceId: number; readonly dispose: () => void }
   | { readonly _tag: "Stop" }
   | { readonly _tag: "StopSurface"; readonly surfaceId: number }
 
@@ -333,57 +223,27 @@ export interface RegistrationTransition {
 
 export const initialRegistrationState: RegistrationState = { _tag: "Stopped" }
 
-const exhaustiveRegistrationEvent = (event: never): RegistrationTransition => event
-
 export const transitionRegistration = (
   state: RegistrationState,
   event: RegistrationEvent
 ): RegistrationTransition => {
-  switch (state._tag) {
-    case "Stopped":
-      switch (event._tag) {
-        case "Start":
-          return {
-            next: {
-              _tag: "Running",
-              surfaceId: event.surfaceId,
-              dispose: event.dispose
-            },
-            disposeToRun: undefined
-          }
-        case "Stop":
-        case "StopSurface":
-          return { next: state, disposeToRun: undefined }
-        default:
-          return exhaustiveRegistrationEvent(event)
+  switch (event._tag) {
+    case "Start":
+      return {
+        next: { _tag: "Running", surfaceId: event.surfaceId, dispose: event.dispose },
+        disposeToRun: state._tag === "Running" ? state.dispose : undefined
       }
-
-    case "Running":
-      switch (event._tag) {
-        case "Start":
-          return {
-            next: {
-              _tag: "Running",
-              surfaceId: event.surfaceId,
-              dispose: event.dispose
-            },
-            disposeToRun: state.dispose
-          }
-        case "Stop":
-          return {
-            next: initialRegistrationState,
-            disposeToRun: state.dispose
-          }
-        case "StopSurface":
-          return state.surfaceId === event.surfaceId
-            ? { next: initialRegistrationState, disposeToRun: state.dispose }
-            : { next: state, disposeToRun: undefined }
-        default:
-          return exhaustiveRegistrationEvent(event)
+    case "Stop":
+      return {
+        next: initialRegistrationState,
+        disposeToRun: state._tag === "Running" ? state.dispose : undefined
       }
-
+    case "StopSurface":
+      return state._tag === "Running" && state.surfaceId === event.surfaceId
+        ? { next: initialRegistrationState, disposeToRun: state.dispose }
+        : { next: state, disposeToRun: undefined }
     default: {
-      const _exhaustive: never = state
+      const _exhaustive: never = event
       return _exhaustive
     }
   }

@@ -56,70 +56,25 @@ const KEY_NAME_MAP: Readonly<Record<string, string>> = {
 
 export const nativeTypeOf = (
   tag: string
-): "div" | "text" | "input" | "textarea" => {
-  switch (tag) {
-    case "text":
-      return "text"
-    case "input":
-      return "input"
-    case "textarea":
-      return "textarea"
-    default:
-      return "div"
-  }
-}
+): "div" | "text" | "input" | "textarea" =>
+  tag === "text" || tag === "input" || tag === "textarea" ? tag : "div"
 
-export const normalizeKey = (raw: string | undefined): string => {
-  if (!raw) return ""
-  return KEY_NAME_MAP[raw.toLowerCase()] ?? raw
-}
+export const normalizeKey = (raw: string | undefined): string =>
+  raw ? (KEY_NAME_MAP[raw.toLowerCase()] ?? raw) : ""
 
-export const toPayload = (
-  eventType: string,
-  raw: EventPayload,
-  valueOverride?: string
-): unknown => {
+export const toKeyDownPayload = (raw: EventPayload) => {
   const mods = raw.modifiers ?? {
     shift: false,
     ctrl: false,
     alt: false,
     cmd: false
   }
-  switch (eventType) {
-    case "click":
-    case "mouseDown":
-    case "mouseUp":
-      return {
-        x: raw.x ?? 0,
-        y: raw.y ?? 0,
-        button: raw.button ?? 0,
-        clickCount: raw.clickCount ?? 1,
-        shift: mods.shift,
-        ctrl: mods.ctrl,
-        alt: mods.alt,
-        meta: mods.cmd
-      }
-    case "mouseEnter":
-    case "mouseLeave":
-      return { x: raw.x ?? 0, y: raw.y ?? 0 }
-    case "keyDown":
-    case "keyUp":
-      return {
-        key: normalizeKey(raw.key),
-        keyChar: raw.keyChar ?? raw.key ?? "",
-        repeat: raw.isHeld ?? false,
-        shift: mods.shift,
-        ctrl: mods.ctrl,
-        alt: mods.alt,
-        meta: mods.cmd
-      }
-    case "change":
-    case "submit":
-      return { value: valueOverride ?? raw.value ?? "" }
-    case "scroll":
-      return { deltaX: raw.deltaX ?? 0, deltaY: raw.deltaY ?? 0 }
-    default:
-      return {}
+  return {
+    key: normalizeKey(raw.key),
+    shift: mods.shift,
+    ctrl: mods.ctrl,
+    alt: mods.alt,
+    meta: mods.cmd
   }
 }
 
@@ -139,12 +94,9 @@ export const extractInheritedText = (
 
 export const isScrollableStyle = (style: StyleDesc | undefined): boolean =>
   style !== undefined &&
-  (style.overflow === "scroll" ||
-    style.overflow === "auto" ||
-    style.overflowY === "scroll" ||
-    style.overflowY === "auto" ||
-    style.overflowX === "scroll" ||
-    style.overflowX === "auto")
+  (["overflow", "overflowY", "overflowX"] as const).some(
+    (k) => style[k] === "scroll" || style[k] === "auto"
+  )
 
 export const normalizeGpuiStyle = (
   tag: string,
@@ -156,16 +108,10 @@ export const normalizeGpuiStyle = (
 
   if (tag === "box" || tag === "scroll" || tag === "button") {
     out["display"] = "flex"
-    if (tag === "box" || tag === "scroll") {
-      out["flexDirection"] = "column"
-    }
+    if (tag !== "button") out["flexDirection"] = "column"
   }
   if (tag === "scroll") {
-    if (horizontal) {
-      out["overflowX"] = "scroll"
-    } else {
-      out["overflowY"] = "scroll"
-    }
+    out[horizontal ? "overflowX" : "overflowY"] = "scroll"
   }
 
   if (raw !== undefined) {
@@ -191,9 +137,7 @@ export const normalizeGpuiStyle = (
         const parsed = Number(value)
         out["fontWeight"] = Number.isFinite(parsed) ? parsed : value
       } else if (key === "borderBottomColor" || key === "borderTopColor") {
-        if (out["borderColor"] === undefined) {
-          out["borderColor"] = value
-        }
+        out["borderColor"] ??= value
       } else {
         out[key] = value
       }

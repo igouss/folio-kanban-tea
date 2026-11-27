@@ -1,32 +1,21 @@
-import { Renderer } from "@effect/ui"
-import type { Component, View } from "@effect/ui"
+import type { Component, Renderer, View } from "@effect/ui"
 import { Ui } from "@universal-ui/core"
 import type { WindowOptions } from "@gpuix/native"
 import type { NativeRenderer } from "@gpuix/native/host"
 import { createNativeRenderer, startFrameLoop } from "@gpuix/native/runtime"
-import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
-import * as Gpui from "./Gpui.ts"
 import { makeHost } from "./GpuiHost.ts"
-
-const makeScopedHost = (renderer: NativeRenderer) =>
-  Effect.gen(function* () {
-    const handle = makeHost(renderer)
-    yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
-    const context = Context.make(Renderer.Renderer, { host: handle.host }).pipe(
-      Context.add(Gpui.Host, handle.service),
-      Context.add(Ui.Host, { platform: "desktop" })
-    )
-    return { handle, context }
-  })
 
 export const layer = (
   renderer: NativeRenderer
-): Layer.Layer<Renderer.Renderer | Gpui.Host | Ui.Host> =>
+): Layer.Layer<Renderer.Renderer | Ui.Host> =>
   Layer.effectContext(
-    Effect.map(makeScopedHost(renderer), ({ context }) => context)
+    Effect.map(
+      Ui.makeScopedHost("desktop", () => makeHost(renderer)),
+      ({ context }) => context
+    )
   )
 
 export const mount = <
@@ -47,11 +36,13 @@ export const mount = <
   never,
   Exclude<
     R | RP | Renderer.HostOf<V>,
-    Gpui.Host | Ui.Host | Renderer.Renderer
+    Ui.Host | Renderer.Renderer
   > | Scope.Scope
 > =>
   Effect.gen(function* () {
-    const { handle, context } = yield* makeScopedHost(renderer)
+    const { handle, context } = yield* Ui.makeScopedHost("desktop", () =>
+      makeHost(renderer)
+    )
     const root = yield* Ui.mountWithHost(
       component,
       props,
@@ -79,19 +70,14 @@ export const run = <
   void,
   never,
   Exclude<
-    Exclude<
-      R | RP | Renderer.HostOf<V>,
-      Gpui.Host | Ui.Host | Renderer.Renderer
-    >,
+    Exclude<R | RP | Renderer.HostOf<V>, Ui.Host | Renderer.Renderer>,
     Scope.Scope
   >
 > =>
   Effect.scoped(
     Effect.gen(function* () {
       const renderer = createNativeRenderer({
-        onError: (err) => {
-          console.error("[effect-ui-gpui]", err)
-        }
+        onError: (err) => console.error("[effect-ui-gpui]", err)
       })
       renderer.init(windowOptions)
       yield* mount(component, props, renderer)

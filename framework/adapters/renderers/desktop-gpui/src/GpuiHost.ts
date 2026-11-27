@@ -9,8 +9,6 @@ import {
   type NativeRenderer,
   type StyleDesc
 } from "@gpuix/native/host"
-import type * as Context from "effect/Context"
-import * as Gpui from "./Gpui.ts"
 import {
   CUSTOM_PROP_KEYS,
   INHERITED_TEXT_KEYS,
@@ -18,9 +16,8 @@ import {
   isScrollableStyle,
   nativeTypeOf,
   normalizeGpuiStyle,
-  toPayload
+  toKeyDownPayload
 } from "./events.ts"
-
 import {
   completeInputNudge,
   detachInputValue,
@@ -33,8 +30,10 @@ import {
 
 const CONTROLLED_PROPS: ReadonlySet<string> = new Set(["value"])
 
-export interface GpuiNode extends Gpui.GpuiNodeHandle {
+export interface GpuiNode {
+  id: number
   readonly kind: "root" | "element" | "text"
+  readonly tag: string
   readonly nativeType: "div" | "text" | "input" | "textarea"
   parent: GpuiNode | undefined
   readonly children: Array<GpuiNode>
@@ -67,7 +66,6 @@ const isClickableAncestor = (node: GpuiNode): boolean => {
 export interface GpuiHostHandle {
   readonly host: Renderer.Host<GpuiNode>
   readonly rootContainer: GpuiNode
-  readonly service: Context.Service.Shape<typeof Gpui.Host>
   readonly flush: () => void
   readonly dispose: () => void
 }
@@ -90,15 +88,15 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
   const makeNode = (
     kind: GpuiNode["kind"],
     tag: string,
-    text = ""
+    text = "",
+    allocateId = true
   ): GpuiNode => {
-    const id = nextId++
-    const nativeType = kind === "text" ? "text" : nativeTypeOf(tag)
+    const id = allocateId ? nextId++ : 0
     const node: GpuiNode = {
       id,
       kind,
       tag,
-      nativeType,
+      nativeType: kind === "text" ? "text" : nativeTypeOf(tag),
       parent: undefined,
       children: [],
       text,
@@ -119,7 +117,7 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       numberOfLines: undefined,
       detached: false
     }
-    nodes.set(id, node)
+    if (allocateId) nodes.set(id, node)
     return node
   }
 
@@ -136,60 +134,60 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
   const dirtyStyleNodes = new Set<GpuiNode>()
   const pendingValueResets: Array<() => void> = []
 
+  const setCustomPropIfChanged = (
+    node: GpuiNode,
+    name: string,
+    value: unknown
+  ): void => {
+    if (!CUSTOM_PROP_KEYS.has(name)) return
+    const next = value === undefined ? null : (value as string | number | boolean | object | null)
+    if (node.customProps.get(name) !== next) {
+      node.customProps.set(name, next)
+      mutations.setCustomProp(node.id, name, next)
+    }
+  }
+
   const syncNativeListener = (node: GpuiNode, eventType: string, active: boolean): void => {
-    const has = node.nativeListeners.has(eventType)
-    if (active === has) return
-    if (active) {
-      node.nativeListeners.add(eventType)
-      mutations.setEventListener(node.id, eventType, true)
-      registerEventHandler(eventHandlers, node.id, eventType, (rawEvent) => {
-        if (node.detached || node.dispatch === undefined) return
-        if (eventType === "click") {
-          if (node.disabled) return
-          const pressHandler = node.handlers["press"]
-          if (pressHandler !== undefined) {
-            node.dispatch("press", pressHandler, {})
-          }
-          const clickHandler = node.handlers["click"]
-          if (clickHandler !== undefined) {
-            node.dispatch("click", clickHandler, toPayload("click", rawEvent))
-          }
-          return
-        }
-        if (eventType === "change") {
-          const received = receiveNativeInputValue(node.inputValue, rawEvent.value)
-          node.inputValue = received.next
-          const changeTextHandler = node.handlers["changeText"]
-          if (changeTextHandler !== undefined) {
-            node.dispatch("changeText", changeTextHandler, { text: received.cleanValue })
-          }
-          const handler = node.handlers["change"]
-          if (handler !== undefined) {
-            node.dispatch("change", handler, toPayload("change", rawEvent, received.cleanValue))
-          }
-          return
-        }
-        if (eventType === "submit") {
-          const clean = readSubmittedInputValue(node.inputValue, rawEvent.value)
-          const handler = node.handlers["submit"]
-          if (handler !== undefined) {
-            node.dispatch("submit", handler, {
-              ...(toPayload("submit", rawEvent, clean) as Record<string, unknown>),
-              text: clean
-            })
-          }
-          return
-        }
-        const handler = node.handlers[eventType]
-        if (handler !== undefined) {
-          node.dispatch(eventType, handler, toPayload(eventType, rawEvent))
-        }
-      })
-    } else {
+    if (active === node.nativeListeners.has(eventType)) return
+    if (!active) {
       node.nativeListeners.delete(eventType)
       mutations.setEventListener(node.id, eventType, false)
       eventHandlers.get(node.id)?.delete(eventType)
+      return
     }
+    node.nativeListeners.add(eventType)
+    mutations.setEventListener(node.id, eventType, true)
+    registerEventHandler(eventHandlers, node.id, eventType, (rawEvent) => {
+      if (node.detached || node.dispatch === undefined) return
+      switch (eventType) {
+        case "click": {
+          if (node.disabled) return
+          const h = node.handlers["press"]
+          if (h !== undefined) node.dispatch("press", h, {})
+          return
+        }
+        case "change": {
+          const received = receiveNativeInputValue(node.inputValue, rawEvent.value)
+          node.inputValue = received.next
+          const h = node.handlers["changeText"]
+          if (h !== undefined) node.dispatch("changeText", h, { text: received.cleanValue })
+          return
+        }
+        case "submit": {
+          const h = node.handlers["submit"]
+          if (h !== undefined) {
+            const text = readSubmittedInputValue(node.inputValue, rawEvent.value)
+            node.dispatch("submit", h, { text })
+          }
+          return
+        }
+        case "keyDown": {
+          const h = node.handlers["keyDown"]
+          if (h !== undefined) node.dispatch("keyDown", h, toKeyDownPayload(rawEvent))
+          return
+        }
+      }
+    })
   }
 
   const pushControlledValue = (node: GpuiNode, desired: string): void => {
@@ -212,31 +210,24 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
           mutations.flushMutations()
         })
         return
-      default: {
-        const _exhaustive: never = action
-        return _exhaustive
-      }
     }
   }
 
   const computeAndSendStyle = (node: GpuiNode): void => {
-    if (node.kind === "root" || node.detached) return
-    if (node.id === 0) return
+    if (node.kind === "root" || node.detached || node.id === 0) return
     const parentText = node.parent?.inheritedText ?? {}
     node.inheritedText = extractInheritedText(parentText, node.ownStyle)
 
     let out: Record<string, unknown>
     if (node.kind === "text") {
       out = { ...node.inheritedText }
-      if (isClickableAncestor(node)) {
-        out["pointerEvents"] = "none"
-      }
+      if (isClickableAncestor(node)) out["pointerEvents"] = "none"
     } else {
       out = { ...(node.ownStyle ?? {}) }
-      if (node.tag === "button") {
-        if (out["cursor"] === undefined) out["cursor"] = "pointer"
+      if (node.tag === "button" && out["cursor"] === undefined) {
+        out["cursor"] = "pointer"
       }
-      if (node.nativeType === "text" || node.nativeType === "input" || node.nativeType === "textarea") {
+      if (node.nativeType !== "div") {
         for (const key of INHERITED_TEXT_KEYS) {
           if (out[key] === undefined && node.inheritedText[key] !== undefined) {
             out[key] = node.inheritedText[key]
@@ -271,9 +262,7 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       mutations.setStyle(node.id, out)
     }
 
-    for (const child of node.children) {
-      computeAndSendStyle(child)
-    }
+    for (const child of node.children) computeAndSendStyle(child)
   }
 
   const syncTextElementContent = (node: GpuiNode): void => {
@@ -294,9 +283,7 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
     unregisterEventHandlers(eventHandlers, node.id)
     node.nativeListeners.clear()
     dirtyStyleNodes.delete(node)
-    for (const child of node.children) {
-      detachSubtree(child)
-    }
+    for (const child of node.children) detachSubtree(child)
   }
 
   const host: Renderer.Host<GpuiNode> = {
@@ -304,48 +291,18 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       const node = makeNode("element", tag)
       mutations.createElement(node.id, node.nativeType)
       if (tag === "button") {
-        mutations.setCustomProp(node.id, "role", "button")
-        mutations.setCustomProp(node.id, "tabIndex", 0)
-        node.customProps.set("role", "button")
-        node.customProps.set("tabIndex", 0)
+        setCustomPropIfChanged(node, "role", "button")
+        setCustomPropIfChanged(node, "tabIndex", 0)
       }
       if (node.nativeType === "input" || node.nativeType === "textarea") {
         syncNativeListener(node, "change", true)
-        if (node.nativeType === "input") {
-          syncNativeListener(node, "submit", true)
-        }
+        if (node.nativeType === "input") syncNativeListener(node, "submit", true)
       }
       dirtyStyleNodes.add(node)
       return node
     },
 
-    createText(text) {
-      return {
-        id: 0,
-        kind: "text",
-        tag: "#text",
-        nativeType: "text",
-        parent: undefined,
-        children: [],
-        text,
-        ownStyle: undefined,
-        rawStyle: undefined,
-        hoverStyle: undefined,
-        activeStyle: undefined,
-        inheritedText: {},
-        lastSentStyleJson: "",
-        customProps: new Map(),
-        handlers: {},
-        dispatch: undefined,
-        nativeListeners: new Set(),
-        inputValue: initialInputValueState,
-        isInteractive: false,
-        disabled: false,
-        horizontal: false,
-        numberOfLines: undefined,
-        detached: false
-      }
-    },
+    createText: (text) => makeNode("text", "#text", text, false),
 
     setText(node, text) {
       if (node.text === text) return
@@ -358,65 +315,47 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
     },
 
     setAttr(node, name, value) {
-      if (CUSTOM_PROP_KEYS.has(name)) {
-        const next = value ?? null
-        if (node.customProps.get(name) !== next) {
-          node.customProps.set(name, next)
-          mutations.setCustomProp(node.id, name, next)
-        }
-      }
+      setCustomPropIfChanged(node, name, value)
     },
 
     setProp(node, name, value) {
-      if (name === "style") {
-        node.rawStyle = value as Record<string, unknown> | undefined
-        node.ownStyle = normalizeGpuiStyle(node.tag, node.rawStyle, node.horizontal)
-        dirtyStyleNodes.add(node)
-        return
-      }
-      if (name === "horizontal") {
-        node.horizontal = Boolean(value)
-        node.ownStyle = normalizeGpuiStyle(node.tag, node.rawStyle, node.horizontal)
-        dirtyStyleNodes.add(node)
-        return
-      }
-      if (name === "numberOfLines") {
-        node.numberOfLines = typeof value === "number" ? value : undefined
-        dirtyStyleNodes.add(node)
-        return
-      }
-      if (name === "disabled") {
-        node.disabled = Boolean(value)
-        return
-      }
-      if (name === "hoverStyle") {
-        node.hoverStyle = normalizeGpuiStyle(
-          "hover",
-          value as Record<string, unknown> | undefined
-        ) as Omit<StyleDesc, "hover" | "active"> | undefined
-        dirtyStyleNodes.add(node)
-        return
-      }
-      if (name === "activeStyle") {
-        node.activeStyle = normalizeGpuiStyle(
-          "active",
-          value as Record<string, unknown> | undefined
-        ) as Omit<StyleDesc, "hover" | "active"> | undefined
-        dirtyStyleNodes.add(node)
-        return
-      }
-      if (name === "value") {
-        if (typeof value === "string") {
-          pushControlledValue(node, value)
-        }
-        return
-      }
-      if (CUSTOM_PROP_KEYS.has(name)) {
-        const next = value === undefined ? null : (value as string | number | boolean | object | null)
-        if (node.customProps.get(name) !== next) {
-          node.customProps.set(name, next)
-          mutations.setCustomProp(node.id, name, next)
-        }
+      switch (name) {
+        case "style":
+          node.rawStyle = value as Record<string, unknown> | undefined
+          node.ownStyle = normalizeGpuiStyle(node.tag, node.rawStyle, node.horizontal)
+          dirtyStyleNodes.add(node)
+          return
+        case "horizontal":
+          node.horizontal = Boolean(value)
+          node.ownStyle = normalizeGpuiStyle(node.tag, node.rawStyle, node.horizontal)
+          dirtyStyleNodes.add(node)
+          return
+        case "numberOfLines":
+          node.numberOfLines = typeof value === "number" ? value : undefined
+          dirtyStyleNodes.add(node)
+          return
+        case "disabled":
+          node.disabled = Boolean(value)
+          return
+        case "hoverStyle":
+          node.hoverStyle = normalizeGpuiStyle(
+            "hover",
+            value as Record<string, unknown> | undefined
+          ) as Omit<StyleDesc, "hover" | "active"> | undefined
+          dirtyStyleNodes.add(node)
+          return
+        case "activeStyle":
+          node.activeStyle = normalizeGpuiStyle(
+            "active",
+            value as Record<string, unknown> | undefined
+          ) as Omit<StyleDesc, "hover" | "active"> | undefined
+          dirtyStyleNodes.add(node)
+          return
+        case "value":
+          if (typeof value === "string") pushControlledValue(node, value)
+          return
+        default:
+          setCustomPropIfChanged(node, name, value)
       }
     },
 
@@ -426,13 +365,9 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
         if (prevIndex >= 0) node.parent.children.splice(prevIndex, 1)
       }
       node.parent = parent
-      if (ref === undefined) {
-        parent.children.push(node)
-      } else {
-        const idx = parent.children.indexOf(ref)
-        if (idx >= 0) parent.children.splice(idx, 0, node)
-        else parent.children.push(node)
-      }
+      const idx = ref !== undefined ? parent.children.indexOf(ref) : -1
+      if (idx >= 0) parent.children.splice(idx, 0, node)
+      else parent.children.push(node)
 
       // GPUI `text` element holds its string via `setText`, not nested `text` children.
       if (parent.tag === "text" && parent.kind === "element" && node.kind === "text") {
@@ -441,17 +376,14 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       }
 
       if (node.kind === "text" && node.id === 0) {
-        const id = nextId++
-        ;(node as { id: number }).id = id
-        nodes.set(id, node)
-        mutations.createElement(id, "text")
-        mutations.setText(id, node.text)
+        node.id = nextId++
+        nodes.set(node.id, node)
+        mutations.createElement(node.id, "text")
+        mutations.setText(node.id, node.text)
       }
 
       if (parent.nativeType === "div" && node.id !== 0) {
-        if (ref === undefined) {
-          mutations.appendChild(parent.id, node.id)
-        } else if (ref.id !== 0) {
+        if (ref !== undefined && ref.id !== 0) {
           mutations.insertBefore(parent.id, node.id, ref.id)
         } else {
           mutations.appendChild(parent.id, node.id)
@@ -468,20 +400,13 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
         node.parent = undefined
         if (parent.tag === "text" && parent.kind === "element" && node.kind === "text") {
           syncTextElementContent(parent)
-          detachSubtree(node)
-          if (node.id !== 0) mutations.destroyElement(node.id)
-          return
         }
       }
       detachSubtree(node)
-      if (node.id !== 0) {
-        mutations.destroyElement(node.id)
-      }
+      if (node.id !== 0) mutations.destroyElement(node.id)
     },
 
-    parentOf(node) {
-      return node.parent
-    },
+    parentOf: (node) => node.parent,
 
     nextOf(node) {
       const parent = node.parent
@@ -495,40 +420,30 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
       node.dispatch = dispatch
       const hadInteractive = node.isInteractive
       const wanted = new Set<string>()
-      for (const key of Object.keys(handlers)) {
-        if (key === "press") wanted.add("click")
-        else if (key === "changeText") wanted.add("change")
-        else wanted.add(key)
-      }
-      if (node.nativeType === "input") {
+      if (handlers["press"] !== undefined) wanted.add("click")
+      if (handlers["changeText"] !== undefined || node.nativeType === "input" || node.nativeType === "textarea") {
         wanted.add("change")
+      }
+      if (handlers["submit"] !== undefined || node.nativeType === "input") {
         wanted.add("submit")
-      } else if (node.nativeType === "textarea") {
-        wanted.add("change")
       }
+      if (handlers["keyDown"] !== undefined) wanted.add("keyDown")
+
       node.isInteractive =
         node.tag === "button" ||
         node.nativeType === "input" ||
         node.nativeType === "textarea" ||
         wanted.has("click") ||
-        wanted.has("mouseDown") ||
-        wanted.has("mouseUp") ||
         wanted.has("keyDown")
 
       for (const existing of [...node.nativeListeners]) {
-        if (!wanted.has(existing)) {
-          syncNativeListener(node, existing, false)
-        }
+        if (!wanted.has(existing)) syncNativeListener(node, existing, false)
       }
-      for (const next of wanted) {
-        syncNativeListener(node, next, true)
-      }
-      if (hadInteractive !== node.isInteractive) {
-        dirtyStyleNodes.add(node)
-      }
+      for (const next of wanted) syncNativeListener(node, next, true)
+      if (hadInteractive !== node.isInteractive) dirtyStyleNodes.add(node)
     },
 
-    elements: [Gpui.name, Ui.name],
+    elements: [Ui.name],
     controlled: CONTROLLED_PROPS,
     runsMounts: true,
 
@@ -553,33 +468,20 @@ export const makeHost = (renderer: NativeRenderer): GpuiHostHandle => {
     },
 
     head(folded: Head.Head) {
-      if (folded.title !== undefined) {
-        renderer.setWindowTitle?.(folded.title)
-      }
+      if (folded.title !== undefined) renderer.setWindowTitle?.(folded.title)
     }
-  }
-
-  const service: Context.Service.Shape<typeof Gpui.Host> = {
-    focus: (handle) => renderer.focusElement?.(handle.id),
-    blur: () => renderer.blur?.(),
-    setWindowTitle: (title) => renderer.setWindowTitle?.(title)
-  }
-
-  const dispose = (): void => {
-    for (const child of [...rootContainer.children]) {
-      host.remove(child)
-    }
-    mutations.destroyElement(rootContainer.id)
-    mutations.flushMutations()
-    binding.detach()
   }
 
   return {
     host,
     rootContainer,
-    service,
     flush: () => host.commit?.(),
-    dispose
+    dispose: () => {
+      for (const child of [...rootContainer.children]) host.remove(child)
+      mutations.destroyElement(rootContainer.id)
+      mutations.flushMutations()
+      binding.detach()
+    }
   }
 }
 

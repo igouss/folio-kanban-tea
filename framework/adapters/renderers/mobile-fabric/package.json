@@ -6,7 +6,6 @@
   "exports": {
     ".": "./src/index.ts",
     "./adapters": "./src/adapters/index.ts",
-    "./css": "./src/css/index.ts",
     "./subscription": "./src/subscription/index.ts",
     "./register": "./src/register.ts",
     "./testing": "./src/testing/index.ts"

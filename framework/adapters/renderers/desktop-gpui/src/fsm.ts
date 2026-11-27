@@ -1,7 +1,7 @@
 export const NUDGE = "\u200b"
 
 /**
- * Explicit controlled GPUI text-field value synchronization state machine:
+ * Controlled GPUI text-field value synchronization state machine:
  * Uninitialized -> Synced <-> Nudged -> Detached (terminal).
  */
 export type InputValueState =
@@ -36,121 +36,78 @@ export interface InputValueTransition {
 const NOOP: InputValueEffect = { _tag: "Noop" }
 const DETACHED: InputValueState = { _tag: "Detached" }
 
-const exhaustiveEvent = (event: never): InputValueTransition => event
+const synced = (native: string, sent = native): InputValueState => ({
+  _tag: "Synced",
+  native,
+  sent
+})
 
-/**
- * State-first finite state machine for controlled GPUI text inputs.
- * Switching on `state._tag` first and exhaustively matching `event._tag`
- * guarantees every `(state, event)` pair is handled explicitly.
- */
 export const transitionInputValue = (
   state: InputValueState,
   event: InputValueEvent
 ): InputValueTransition => {
+  if (event._tag === "Detach") {
+    return { next: DETACHED, effect: NOOP }
+  }
+
   switch (state._tag) {
     case "Uninitialized":
-      switch (event._tag) {
-        case "SyncDesired":
-          return {
-            next: { _tag: "Synced", native: event.desired, sent: event.desired },
-            effect: { _tag: "Set", value: event.desired }
-          }
-        case "ReceiveNative": {
-          const cleanValue = event.rawValue ?? ""
-          return {
-            next: { _tag: "Synced", native: cleanValue, sent: cleanValue },
-            effect: { _tag: "EmitNativeChange", cleanValue }
-          }
-        }
-        case "CompleteNudge":
-          return { next: state, effect: NOOP }
-        case "Detach":
-          return { next: DETACHED, effect: NOOP }
-        default:
-          return exhaustiveEvent(event)
+      if (event._tag === "SyncDesired") {
+        return { next: synced(event.desired), effect: { _tag: "Set", value: event.desired } }
       }
+      if (event._tag === "ReceiveNative") {
+        const cleanValue = event.rawValue ?? ""
+        return { next: synced(cleanValue), effect: { _tag: "EmitNativeChange", cleanValue } }
+      }
+      return { next: state, effect: NOOP }
 
     case "Synced":
-      switch (event._tag) {
-        case "SyncDesired": {
-          if (state.native === event.desired && state.sent === event.desired) {
-            return { next: state, effect: NOOP }
-          }
-          if (state.sent !== event.desired) {
-            return {
-              next: { _tag: "Synced", native: event.desired, sent: event.desired },
-              effect: { _tag: "Set", value: event.desired }
-            }
-          }
-          const nudged = event.desired + NUDGE
-          return {
-            next: { _tag: "Nudged", desired: event.desired, nudged },
-            effect: { _tag: "NudgeThenReset", nudged, desired: event.desired }
-          }
-        }
-        case "ReceiveNative": {
-          const cleanValue = event.rawValue ?? ""
-          return {
-            next: { _tag: "Synced", native: cleanValue, sent: state.sent },
-            effect: { _tag: "EmitNativeChange", cleanValue }
-          }
-        }
-        case "CompleteNudge":
+      if (event._tag === "SyncDesired") {
+        if (state.native === event.desired && state.sent === event.desired) {
           return { next: state, effect: NOOP }
-        case "Detach":
-          return { next: DETACHED, effect: NOOP }
-        default:
-          return exhaustiveEvent(event)
+        }
+        if (state.sent !== event.desired) {
+          return { next: synced(event.desired), effect: { _tag: "Set", value: event.desired } }
+        }
+        const nudged = event.desired + NUDGE
+        return {
+          next: { _tag: "Nudged", desired: event.desired, nudged },
+          effect: { _tag: "NudgeThenReset", nudged, desired: event.desired }
+        }
       }
+      if (event._tag === "ReceiveNative") {
+        const cleanValue = event.rawValue ?? ""
+        return {
+          next: synced(cleanValue, state.sent),
+          effect: { _tag: "EmitNativeChange", cleanValue }
+        }
+      }
+      return { next: state, effect: NOOP }
 
     case "Nudged":
-      switch (event._tag) {
-        case "SyncDesired":
-          if (state.nudged === event.desired) {
-            return { next: state, effect: NOOP }
-          }
-          return {
-            next: { _tag: "Synced", native: event.desired, sent: event.desired },
-            effect: { _tag: "Set", value: event.desired }
-          }
-        case "CompleteNudge":
-          if (state.nudged !== event.expectedNudged) {
-            return { next: state, effect: NOOP }
-          }
-          return {
-            next: { _tag: "Synced", native: state.desired, sent: state.desired },
-            effect: { _tag: "ResetAfterNudge", value: state.desired }
-          }
-        case "ReceiveNative": {
-          const cleanValue =
-            event.rawValue !== undefined
-              ? event.rawValue.replace(NUDGE, "")
-              : ""
-          return {
-            next: { _tag: "Synced", native: cleanValue, sent: state.nudged },
-            effect: { _tag: "EmitNativeChange", cleanValue }
-          }
-        }
-        case "Detach":
-          return { next: DETACHED, effect: NOOP }
-        default:
-          return exhaustiveEvent(event)
+      if (event._tag === "SyncDesired") {
+        return state.nudged === event.desired
+          ? { next: state, effect: NOOP }
+          : { next: synced(event.desired), effect: { _tag: "Set", value: event.desired } }
       }
+      if (event._tag === "CompleteNudge") {
+        return state.nudged === event.expectedNudged
+          ? { next: synced(state.desired), effect: { _tag: "ResetAfterNudge", value: state.desired } }
+          : { next: state, effect: NOOP }
+      }
+      if (event._tag === "ReceiveNative") {
+        const cleanValue = event.rawValue?.replace(NUDGE, "") ?? ""
+        return {
+          next: synced(cleanValue, state.nudged),
+          effect: { _tag: "EmitNativeChange", cleanValue }
+        }
+      }
+      return { next: state, effect: NOOP }
 
     case "Detached":
-      switch (event._tag) {
-        case "SyncDesired":
-        case "CompleteNudge":
-        case "Detach":
-          return { next: state, effect: NOOP }
-        case "ReceiveNative":
-          return {
-            next: state,
-            effect: { _tag: "EmitNativeChange", cleanValue: event.rawValue ?? "" }
-          }
-        default:
-          return exhaustiveEvent(event)
-      }
+      return event._tag === "ReceiveNative"
+        ? { next: state, effect: { _tag: "EmitNativeChange", cleanValue: event.rawValue ?? "" } }
+        : { next: state, effect: NOOP }
 
     default: {
       const _exhaustive: never = state
@@ -163,15 +120,14 @@ export const syncDesiredInputValue = (
   state: InputValueState,
   desired: string
 ): { readonly next: InputValueState; readonly action: InputSyncAction } => {
-  const { next, effect } = transitionInputValue(state, {
-    _tag: "SyncDesired",
-    desired
-  })
-  const action: InputSyncAction =
-    effect._tag === "Set" || effect._tag === "NudgeThenReset"
-      ? effect
-      : { _tag: "Noop" }
-  return { next, action }
+  const { next, effect } = transitionInputValue(state, { _tag: "SyncDesired", desired })
+  return {
+    next,
+    action:
+      effect._tag === "Set" || effect._tag === "NudgeThenReset"
+        ? effect
+        : { _tag: "Noop" }
+  }
 }
 
 export const completeInputNudge = (
@@ -211,17 +167,11 @@ export const readSubmittedInputValue = (
 ): string => {
   switch (state._tag) {
     case "Nudged":
-      return rawValue !== undefined
-        ? rawValue.replace(NUDGE, "")
-        : state.desired
+      return rawValue !== undefined ? rawValue.replace(NUDGE, "") : state.desired
     case "Synced":
       return rawValue ?? state.native
     case "Uninitialized":
     case "Detached":
       return rawValue ?? ""
-    default: {
-      const _exhaustive: never = state
-      return _exhaustive
-    }
   }
 }
