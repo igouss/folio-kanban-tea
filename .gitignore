@@ -3,11 +3,10 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Expo / React Native generated native folders & compiled Tailwind
-apps/mobile-fabric/.expo/
-apps/mobile-fabric/.tailwind/
-apps/mobile-fabric/android/
-apps/mobile-fabric/ios/
+# Expo / React Native generated native folders
+apps/kanban/mobile-fabric/.expo/
+apps/kanban/mobile-fabric/android/
+apps/kanban/mobile-fabric/ios/
 
 # Logs & OS artifacts
 *.log

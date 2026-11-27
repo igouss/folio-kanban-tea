@@ -1,0 +1,26 @@
+{
+  "name": "@universal-ui/host-fabric",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./adapters": "./src/adapters/index.ts",
+    "./css": "./src/css/index.ts",
+    "./subscription": "./src/subscription/index.ts",
+    "./register": "./src/register.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ng-native/fabric": "0.3.0",
+    "@universal-ui/core": "*"
+  },
+  "peerDependencies": {
+    "@effect/ui": "*",
+    "effect": "^4.1.4",
+    "react-native": "0.86.3"
+  }
+}
