@@ -1,8 +1,10 @@
-export type {
-  AppEffect,
-  KanbanAction,
-  ReduceContext,
-  ReduceResult
+export {
+  KanbanActionCases,
+  KanbanActionSchema,
+  type AppEffect,
+  type KanbanAction,
+  type ReduceContext,
+  type ReduceResult
 } from "./actions.ts"
 export { reduce } from "./reducer.ts"
 export {
@@ -32,6 +34,7 @@ export {
   NonEmptyTextSchema,
   NoticeStateSchema,
   NoticeTone,
+  PositiveRequestIdSchema,
   WorkspaceModeSchema,
   initialState,
   makeVisibleNotice,

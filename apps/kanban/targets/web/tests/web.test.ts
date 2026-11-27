@@ -2,8 +2,8 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import {
   FolioApp,
-  kanbanCommandsLayer,
   keyValueBoardRepositoryLayer,
+  liveInspectorLayer,
   loadFolioProps,
   selectCanRedo,
   selectCanUndo,
@@ -41,14 +41,12 @@ describe("Folio Kanban Web (@folio/kanban-app on @universal-ui/host-web)", () =>
     const boardRepoLayer = keyValueBoardRepositoryLayer(storageKey).pipe(
       Layer.provide(store.layer)
     )
-    const appLayer = Layer.provideMerge(
-      kanbanCommandsLayer,
-      Layer.mergeAll(
-        boardRepoLayer,
-        staticLifecycleLayer("active"),
-        staticViewportLayer({ width: 1280, height: 800, topInset: 0 }),
-        makeSequenceIdGeneratorLayer()
-      )
+    const appLayer = Layer.mergeAll(
+      boardRepoLayer,
+      liveInspectorLayer,
+      staticLifecycleLayer("active"),
+      staticViewportLayer({ width: 1280, height: 800, topInset: 0 }),
+      makeSequenceIdGeneratorLayer()
     )
 
     await Effect.runPromise(
@@ -94,12 +92,15 @@ describe("Folio Kanban Web (@folio/kanban-app on @universal-ui/host-web)", () =>
           )
           assert.equal(selectTheme(root.model()!), "graphite")
 
-          // Open MVU Trace inspector
+          // Open MVU Trace inspector (backed by @effect/ui MessageLog Feature)
           const inspectorBtn = dom.findByTestId("board.inspector")
           assert.ok(inspectorBtn)
           inspectorBtn.dispatch("click")
-          yield* Effect.promise(tick)
+          yield* Effect.promise(() =>
+            waitFor(() => dom.findByTestId("inspector.panel") !== undefined)
+          )
           assert.ok(dom.findByTestId("inspector.panel") !== undefined)
+          assert.ok(dom.textContent().includes("FolioApp · ClickedToggleTheme"))
 
           // Quick-add a card via DOM input + Enter submit (mints ID via IdGenerator + Clock)
           dom.findByTestId("lane.add.backlog")!.dispatch("click")
@@ -116,6 +117,15 @@ describe("Folio Kanban Web (@folio/kanban-app on @universal-ui/host-web)", () =>
           assert.equal(selectCards(root.model()!).length, 9)
           assert.equal(selectCards(root.model()!)[0]?.id, "web-card-1")
           assert.ok(dom.doc.title.includes("9 cards"))
+
+          // Trigger component-local SyncStatus machine via DOM click
+          const syncBtn = dom.findByTestId("sync.trigger")
+          assert.ok(syncBtn)
+          syncBtn.dispatch("click")
+          yield* Effect.promise(() =>
+            waitFor(() => dom.textContent().includes("Synced · 9 cards"))
+          )
+          assert.ok(dom.textContent().includes("Synced · 9 cards"))
 
           // Undo & Redo
           assert.equal(selectCanUndo(root.model()!), true)

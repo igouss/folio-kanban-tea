@@ -19,25 +19,33 @@ export const keyValueBoardRepositoryLayer = (
     BoardRepository,
     Effect.gen(function* () {
       const store = yield* KeyValueStore
+      const decodeBoard = Schema.decodeUnknownEffect(SavedBoardJson)
+      const encodeBoard = Schema.encodeEffect(SavedBoardJson)
+
       return {
-        load: Effect.map(store.get(storageKey), (maybeRaw) =>
-          Option.flatMap(maybeRaw, (raw) => {
-            try {
-              return Option.some(Schema.decodeUnknownSync(SavedBoardJson)(raw))
-            } catch {
-              return Option.none()
-            }
+        load: Effect.flatMap(store.get(storageKey), (maybeRaw) =>
+          Option.match(maybeRaw, {
+            onNone: () => Effect.succeed(Option.none()),
+            onSome: (raw) =>
+              decodeBoard(raw).pipe(
+                Effect.tapError((error) =>
+                  Effect.logWarning(
+                    `Ignoring corrupt saved board at "${storageKey}": ${error.message}`
+                  )
+                ),
+                Effect.option
+              )
           })
         ),
         save: (board) =>
-          Effect.suspend(() => {
-            try {
-              const encoded = Schema.encodeSync(SavedBoardJson)(board)
-              return store.set(storageKey, encoded)
-            } catch {
-              return Effect.void
-            }
-          })
+          encodeBoard(board).pipe(
+            Effect.flatMap((encoded) => store.set(storageKey, encoded)),
+            Effect.catch((error) =>
+              Effect.logWarning(
+                `Failed to serialize board for "${storageKey}": ${error.message}`
+              )
+            )
+          )
       }
     })
   )

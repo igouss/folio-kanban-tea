@@ -33,10 +33,13 @@ export {
   COMPACT_BREAKPOINT_PX,
   CardDensity,
   IDLE_WORKSPACE_MODE,
+  KanbanActionCases,
+  KanbanActionSchema,
   KanbanStateSchema,
   NonEmptyTextSchema,
   NoticeStateSchema,
   NoticeTone,
+  PositiveRequestIdSchema,
   WorkspaceModeSchema,
   initialState,
   makeVisibleNotice,
@@ -74,11 +77,43 @@ export {
 } from "./state/index.ts"
 export {
   FolioApp,
+  FolioAppBase,
   FolioAppMessage,
   FolioAppProps,
   loadFolioProps,
   type FolioBootstrapConfig
 } from "./ui/FolioApp.ts"
+export {
+  CardEditor,
+  CardEditorEvents,
+  CardEditorMessage,
+  CardEditorMode,
+  CardEditorModel,
+  CardEditorProps
+} from "./ui/components/CardEditor.ts"
+export {
+  InspectorEvents,
+  InspectorFeature,
+  InspectorProps,
+  LiveInspector,
+  NoopInspector,
+  TraceFeed,
+  liveInspectorLayer,
+  makeMessageLogTraceLayer,
+  noopInspectorLayer
+} from "./ui/components/InspectorFeature.ts"
+export {
+  SendSyncEvent,
+  SyncActorRef,
+  SyncEventSchema,
+  SyncSnapshotSchema,
+  SyncStatus,
+  SyncStatusBase,
+  SyncStatusMessage,
+  SyncStatusProps,
+  type SyncEvent,
+  type SyncSnapshot
+} from "./ui/components/SyncStatus.ts"
 export {
   GRAPHITE_PALETTE,
   PAPER_PALETTE,

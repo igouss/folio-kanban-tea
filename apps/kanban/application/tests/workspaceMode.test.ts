@@ -124,6 +124,32 @@ describe("@folio/kanban-app WorkspaceMode FSM transition matrix", () => {
         }
       },
       {
+        name: "FailMintResult(matching)",
+        event: {
+          _tag: "FailMintResult",
+          requestId: 7
+        },
+        expected: {
+          Idle: "Ignored",
+          Composing: "Ignored",
+          SubmittingCard: "MintFailed",
+          EditingCard: "Ignored"
+        }
+      },
+      {
+        name: "FailMintResult(stale)",
+        event: {
+          _tag: "FailMintResult",
+          requestId: 6
+        },
+        expected: {
+          Idle: "Ignored",
+          Composing: "Ignored",
+          SubmittingCard: "Ignored",
+          EditingCard: "Ignored"
+        }
+      },
+      {
         name: "CancelQuickCard",
         event: { _tag: "CancelQuickCard" },
         expected: {
@@ -144,26 +170,31 @@ describe("@folio/kanban-app WorkspaceMode FSM transition matrix", () => {
         }
       },
       {
-        name: "UpdateDraft",
+        name: "CommitEditedCard(matching)",
         event: {
-          _tag: "UpdateDraft",
-          update: (d) => ({ ...d, notes: "updated" })
+          _tag: "CommitEditedCard",
+          draft: sampleDraft,
+          title: validTitle
         },
         expected: {
           Idle: "Ignored",
           Composing: "Ignored",
           SubmittingCard: "Ignored",
-          EditingCard: "Updated"
+          EditingCard: "CommitEditCard"
         }
       },
       {
-        name: "SubmitEditCard",
-        event: { _tag: "SubmitEditCard" },
+        name: "CommitEditedCard(other-card)",
+        event: {
+          _tag: "CommitEditedCard",
+          draft: { ...sampleDraft, cardId: otherCardId },
+          title: validTitle
+        },
         expected: {
           Idle: "Ignored",
           Composing: "Ignored",
           SubmittingCard: "Ignored",
-          EditingCard: "CommitEditCard"
+          EditingCard: "Ignored"
         }
       },
       {

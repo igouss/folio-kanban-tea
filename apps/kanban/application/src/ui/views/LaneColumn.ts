@@ -1,6 +1,9 @@
 import type { Ui } from "@universal-ui/core"
 import type { LaneViewSnapshot } from "../../presentation/index.ts"
-import type { BoardScreenSnapshot } from "../../state/index.ts"
+import {
+  WorkspaceModeSchema,
+  type BoardScreenSnapshot
+} from "../../state/index.ts"
 import type { FolioPalette as Palette } from "../theme.ts"
 import {
   FolioAppMessage as Msg,
@@ -19,13 +22,17 @@ export const laneColumn = (
   const { lane, stats, visibleCards, wipText, laneAttrs } = entry
   const overWip = stats.overWip
   const { workspaceMode } = screen
+  const isComposerMode = WorkspaceModeSchema.isAnyOf([
+    "Composing",
+    "SubmittingCard"
+  ])
   const composerMode =
-    (workspaceMode._tag === "Composing" ||
-      workspaceMode._tag === "SubmittingCard") &&
-    workspaceMode.lane === lane.id
+    isComposerMode(workspaceMode) && workspaceMode.lane === lane.id
       ? workspaceMode
       : undefined
-  const isSubmitting = composerMode?._tag === "SubmittingCard"
+  const isSubmitting =
+    composerMode !== undefined &&
+    WorkspaceModeSchema.guards.SubmittingCard(composerMode)
 
   return h.box
     .key(lane.id)

@@ -1,8 +1,8 @@
 import "./styles.css"
 import {
   FolioApp,
-  kanbanCommandsLayer,
   keyValueBoardRepositoryLayer,
+  liveInspectorLayer,
   loadFolioProps
 } from "@folio/kanban-app"
 import { WebHost } from "@universal-ui/host-web"
@@ -18,14 +18,12 @@ const BoardRepoLayer = keyValueBoardRepositoryLayer("folio.unified.kanban.v1").p
   Layer.provide(browserStoreLayer)
 )
 
-const AppLayer = Layer.provideMerge(
-  kanbanCommandsLayer,
-  Layer.mergeAll(
-    BoardRepoLayer,
-    browserLifecycleLayer,
-    browserViewportLayer,
-    browserIdGeneratorLayer
-  )
+const PlatformLayer = Layer.mergeAll(
+  BoardRepoLayer,
+  liveInspectorLayer,
+  browserLifecycleLayer,
+  browserViewportLayer,
+  browserIdGeneratorLayer
 )
 
 const Main = WebHost.mount(
@@ -35,6 +33,6 @@ const Main = WebHost.mount(
     platformLabel: "Web · DOM Host"
   }),
   document.getElementById("app")!
-).pipe(Layer.provide(AppLayer))
+).pipe(Layer.provide(PlatformLayer))
 
 Layer.launch(Main).pipe(Effect.runFork)

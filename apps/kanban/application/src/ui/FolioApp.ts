@@ -1,17 +1,8 @@
-import { Command, Head, Subscription, UiSchema, type Component } from "@effect/ui"
+import { Command, Component, Head, Subscription, UiSchema } from "@effect/ui"
 import { BoardRepository, loadInitialBoard } from "@folio/kanban-domain/ports"
-import {
-  CardIdSchema,
-  CardTitleSchema,
-  LaneId,
-  Priority,
-  PriorityFilter,
-  SavedBoardSchema,
-  StoryPoints
-} from "@folio/kanban-domain/schema"
+import { SavedBoardSchema } from "@folio/kanban-domain/schema"
 import {
   Lifecycle,
-  LifecycleState,
   Ui,
   Viewport,
   ViewportMetricsSchema
@@ -19,11 +10,11 @@ import {
 import { Effect, Schema, Stream } from "effect"
 import {
   MintCardMeta,
-  PositiveRequestIdSchema,
-  SaveBoard
+  SaveBoard,
+  kanbanCommandsLayer
 } from "../commands/index.ts"
 import {
-  CardDensity,
+  KanbanActionCases,
   KanbanStateSchema,
   initialState,
   reduce,
@@ -65,43 +56,7 @@ export const loadFolioProps = (
     }
   })
 
-export const FolioAppMessage = UiSchema.TaggedEnum({
-  SelectedLane: { lane: LaneId },
-  TypedSearchQuery: { text: Schema.String },
-  SelectedPriorityFilter: { priority: PriorityFilter },
-  SelectedDensity: { density: CardDensity },
-  ClickedToggleTheme: {},
-  ClickedToggleInspector: {},
-  ClickedUndo: {},
-  ClickedRedo: {},
-  ClickedStartAddCard: { lane: LaneId },
-  TypedQuickTitle: { text: Schema.String },
-  SubmittedQuickCard: {},
-  CompletedMintCard: {
-    requestId: PositiveRequestIdSchema,
-    id: CardIdSchema,
-    createdAt: Schema.String,
-    title: CardTitleSchema,
-    lane: LaneId,
-    tag: Schema.String
-  },
-  CancelledQuickCard: {},
-  ClickedMoveCard: { cardId: CardIdSchema, toLane: LaneId },
-  ClickedDeleteCard: { cardId: CardIdSchema },
-  ClickedOpenEditor: { cardId: CardIdSchema },
-  TypedEditTitle: { text: Schema.String },
-  TypedEditNotes: { text: Schema.String },
-  TypedEditAssignee: { text: Schema.String },
-  SelectedEditLane: { lane: LaneId },
-  SelectedEditPriority: { priority: Priority },
-  SelectedEditPoints: { points: StoryPoints },
-  SubmittedEditCard: {},
-  CancelledEditCard: {},
-  ClickedResetDemo: {},
-  DismissedNotice: {},
-  ChangedLifecycle: { state: LifecycleState },
-  ChangedViewport: { viewport: ViewportMetricsSchema }
-})
+export const FolioAppMessage = UiSchema.TaggedEnum(KanbanActionCases)
 export type FolioAppMessage = typeof FolioAppMessage.Type
 
 type AppStep = Component.Step<
@@ -134,7 +89,16 @@ const runReducer = (
             title: effect.title,
             lane: effect.lane,
             tag: effect.tag
-          }).pipe(Command.map((meta) => FolioAppMessage.CompletedMintCard(meta)))
+          }).pipe(
+            Command.match({
+              onSuccess: (meta) => FolioAppMessage.CompletedMintCard(meta),
+              onFailure: (error) =>
+                FolioAppMessage.FailedMintCard({
+                  requestId: effect.requestId,
+                  error
+                })
+            })
+          )
         )
         break
       case "ViewTransition":
@@ -150,10 +114,10 @@ const runReducer = (
 }
 
 /**
- * Thin @effect/ui driving shell over the pure Kanban reducer.
- * Owns zero domain logic and passes only read-only selector projections to views.
+ * Unwired @effect/ui root shell whose command requirements (`SaveBoard | MintCardMeta`)
+ * stay open for `Story.make` unit tests.
  */
-export const FolioApp = Ui.component({
+export const FolioAppBase = Ui.component({
   name: "FolioApp",
   props: FolioAppProps,
   model: KanbanStateSchema,
@@ -194,36 +158,16 @@ export const FolioApp = Ui.component({
     )
   ],
 
-  update: {
-    SelectedLane: runReducer,
-    TypedSearchQuery: runReducer,
-    SelectedPriorityFilter: runReducer,
-    SelectedDensity: runReducer,
-    ClickedToggleTheme: runReducer,
-    ClickedToggleInspector: runReducer,
-    ClickedUndo: runReducer,
-    ClickedRedo: runReducer,
-    ClickedStartAddCard: runReducer,
-    TypedQuickTitle: runReducer,
-    SubmittedQuickCard: runReducer,
-    CompletedMintCard: runReducer,
-    CancelledQuickCard: runReducer,
-    ClickedMoveCard: runReducer,
-    ClickedDeleteCard: runReducer,
-    ClickedOpenEditor: runReducer,
-    TypedEditTitle: runReducer,
-    TypedEditNotes: runReducer,
-    TypedEditAssignee: runReducer,
-    SelectedEditLane: runReducer,
-    SelectedEditPriority: runReducer,
-    SelectedEditPoints: runReducer,
-    SubmittedEditCard: runReducer,
-    CancelledEditCard: runReducer,
-    ClickedResetDemo: runReducer,
-    DismissedNotice: runReducer,
-    ChangedLifecycle: runReducer,
-    ChangedViewport: runReducer
-  },
+  update: ($, message) => runReducer($, message),
 
   view: (h, model) => boardView(h, selectBoardScreen(model))
 })
+
+/**
+ * Production @effect/ui shell with internal application commands (`kanbanCommandsLayer`)
+ * already provided via `Component.provide`. Delivery targets only wire true platform
+ * ports (`BoardRepository`, `IdGenerator`, `Lifecycle`, `Viewport`, `InspectorFeature`).
+ */
+export const FolioApp = FolioAppBase.pipe(
+  Component.provide(kanbanCommandsLayer)
+)

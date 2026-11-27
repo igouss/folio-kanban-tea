@@ -1,9 +1,16 @@
 import type { Ui } from "@universal-ui/core"
-import type { BoardScreenSnapshot } from "../../state/index.ts"
-import type { FolioAppMessage, FolioAppProps } from "../FolioApp.ts"
+import {
+  WorkspaceModeSchema,
+  type BoardScreenSnapshot
+} from "../../state/index.ts"
+import {
+  FolioAppMessage as Msg,
+  type FolioAppMessage,
+  type FolioAppProps
+} from "../FolioApp.ts"
+import { CardEditor } from "../components/CardEditor.ts"
 import { paletteFor } from "../theme.ts"
 import { columnsBoardView } from "./ColumnsBoardView.ts"
-import { editorView } from "./EditorView.ts"
 import { tabsBoardView } from "./TabsBoardView.ts"
 
 export const boardView = (
@@ -12,10 +19,25 @@ export const boardView = (
 ) => {
   const p = paletteFor(screen.theme)
   const isTabs = screen.layout === "tabs"
-  const editorDraft =
-    screen.workspaceMode._tag === "EditingCard"
-      ? screen.workspaceMode.draft
-      : undefined
+  const editorDraft = WorkspaceModeSchema.guards.EditingCard(screen.workspaceMode)
+    ? screen.workspaceMode.draft
+    : undefined
+
+  const renderEditor = (mode: "modal" | "screen") =>
+    editorDraft !== undefined &&
+    CardEditor(h, {
+      key: editorDraft.cardId,
+      props: {
+        draft: editorDraft,
+        theme: screen.theme,
+        mode
+      },
+      onEmit: {
+        Saved: ({ draft, title }) => Msg.SavedEditedCard({ draft, title }),
+        Deleted: ({ cardId }) => Msg.ClickedDeleteCard({ cardId }),
+        Cancelled: () => Msg.CancelledEditCard()
+      }
+    })
 
   if (isTabs && editorDraft !== undefined) {
     return h.box
@@ -27,7 +49,7 @@ export const boardView = (
         paddingTop: screen.topInset,
         backgroundColor: p.canvas
       })
-      .children(editorView(h, editorDraft, screen.notice, p, "screen"))
+      .children(renderEditor("screen"))
   }
 
   return h.box
@@ -46,8 +68,6 @@ export const boardView = (
       isTabs
         ? tabsBoardView(h, screen, p)
         : columnsBoardView(h, screen, p),
-      !isTabs &&
-        editorDraft !== undefined &&
-        editorView(h, editorDraft, screen.notice, p, "modal")
+      !isTabs && renderEditor("modal")
     )
 }

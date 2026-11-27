@@ -23,7 +23,7 @@ export type CardDensity = typeof CardDensity.Type
 export const InspectorVisibility = Schema.Literals(["closed", "open"])
 export type InspectorVisibility = typeof InspectorVisibility.Type
 
-const PositiveRequestIdSchema = Schema.Int.pipe(
+export const PositiveRequestIdSchema = Schema.Int.pipe(
   Schema.check(Schema.isGreaterThan(0))
 )
 
@@ -38,54 +38,34 @@ export const parseNonEmptyText = (raw: string): NonEmptyText | undefined => {
   return trimmed.length > 0 ? (trimmed as NonEmptyText) : undefined
 }
 
-const WorkspaceIdleSchema = Schema.Struct({
-  _tag: Schema.Literal("Idle")
+export const WorkspaceModeSchema = Schema.TaggedUnion({
+  Idle: {},
+  Composing: {
+    lane: LaneId,
+    title: Schema.String
+  },
+  SubmittingCard: {
+    requestId: PositiveRequestIdSchema,
+    lane: LaneId,
+    title: CardTitleSchema
+  },
+  EditingCard: {
+    draft: CardDraftSchema
+  }
 })
-
-const WorkspaceComposingSchema = Schema.Struct({
-  _tag: Schema.Literal("Composing"),
-  lane: LaneId,
-  title: Schema.String
-})
-
-const WorkspaceSubmittingCardSchema = Schema.Struct({
-  _tag: Schema.Literal("SubmittingCard"),
-  requestId: PositiveRequestIdSchema,
-  lane: LaneId,
-  title: CardTitleSchema
-})
-
-const WorkspaceEditingCardSchema = Schema.Struct({
-  _tag: Schema.Literal("EditingCard"),
-  draft: CardDraftSchema
-})
-
-export const WorkspaceModeSchema = Schema.Union([
-  WorkspaceIdleSchema,
-  WorkspaceComposingSchema,
-  WorkspaceSubmittingCardSchema,
-  WorkspaceEditingCardSchema
-])
 export type WorkspaceMode = typeof WorkspaceModeSchema.Type
 
 export const NoticeTone = Schema.Literals(["info", "error"])
 export type NoticeTone = typeof NoticeTone.Type
 
-const NoticeHiddenSchema = Schema.Struct({
-  _tag: Schema.Literal("Hidden")
+export const NoticeStateSchema = Schema.TaggedUnion({
+  Hidden: {},
+  Visible: {
+    tone: NoticeTone,
+    message: NonEmptyTextSchema,
+    announcement: NonEmptyTextSchema
+  }
 })
-
-const NoticeVisibleSchema = Schema.Struct({
-  _tag: Schema.Literal("Visible"),
-  tone: NoticeTone,
-  message: NonEmptyTextSchema,
-  announcement: NonEmptyTextSchema
-})
-
-export const NoticeStateSchema = Schema.Union([
-  NoticeHiddenSchema,
-  NoticeVisibleSchema
-])
 export type NoticeState = typeof NoticeStateSchema.Type
 
 /**
@@ -133,7 +113,6 @@ export const ShellSliceSchema = Schema.Struct({
   backgroundTrips: Schema.Number,
   notice: NoticeStateSchema,
   inspector: InspectorVisibility,
-  traceEntries: Schema.Array(Schema.String),
   dispatchCount: Schema.Number
 })
 export type ShellSlice = typeof ShellSliceSchema.Type
@@ -177,7 +156,6 @@ export const initialState = (params: InitialStateParams): KanbanState => {
       backgroundTrips: 0,
       notice: { _tag: "Hidden" },
       inspector: "closed",
-      traceEntries: [],
       dispatchCount: 0
     }
   }

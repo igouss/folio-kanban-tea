@@ -20,13 +20,14 @@ export type WorkspaceModeEvent =
       readonly lane: LaneId
       readonly title: CardTitle
     }
+  | { readonly _tag: "FailMintResult"; readonly requestId: number }
   | { readonly _tag: "CancelQuickCard" }
   | { readonly _tag: "OpenEditor"; readonly draft: CardDraft }
   | {
-      readonly _tag: "UpdateDraft"
-      readonly update: (draft: CardDraft) => CardDraft
+      readonly _tag: "CommitEditedCard"
+      readonly draft: CardDraft
+      readonly title: CardTitle
     }
-  | { readonly _tag: "SubmitEditCard" }
   | { readonly _tag: "CancelEditCard" }
   | { readonly _tag: "CardDeleted"; readonly cardId: CardId }
   | { readonly _tag: "Reset" }
@@ -48,6 +49,11 @@ export type WorkspaceModeTransition =
       readonly requestId: number
       readonly lane: LaneId
       readonly title: CardTitle
+    }
+  | {
+      readonly _tag: "MintFailed"
+      readonly mode: Extract<WorkspaceMode, { readonly _tag: "Composing" }>
+      readonly requestId: number
     }
   | {
       readonly _tag: "CommitEditCard"
@@ -99,9 +105,9 @@ export const transitionWorkspaceMode = (
           return { _tag: "Updated", mode: IDLE_WORKSPACE_MODE }
         case "SelectedLane":
         case "ReceiveMintResult":
+        case "FailMintResult":
         case "CancelQuickCard":
-        case "UpdateDraft":
-        case "SubmitEditCard":
+        case "CommitEditedCard":
         case "CancelEditCard":
         case "CardDeleted":
           return IGNORED
@@ -156,8 +162,8 @@ export const transitionWorkspaceMode = (
         case "Reset":
           return { _tag: "Updated", mode: IDLE_WORKSPACE_MODE }
         case "ReceiveMintResult":
-        case "UpdateDraft":
-        case "SubmitEditCard":
+        case "FailMintResult":
+        case "CommitEditedCard":
         case "CancelEditCard":
         case "CardDeleted":
           return IGNORED
@@ -178,6 +184,19 @@ export const transitionWorkspaceMode = (
             lane: event.lane,
             title: event.title
           }
+        case "FailMintResult":
+          if (event.requestId !== mode.requestId) {
+            return IGNORED
+          }
+          return {
+            _tag: "MintFailed",
+            mode: {
+              _tag: "Composing",
+              lane: mode.lane,
+              title: mode.title
+            },
+            requestId: event.requestId
+          }
         case "CancelQuickCard":
           return { _tag: "Updated", mode: IDLE_WORKSPACE_MODE }
         case "Reset":
@@ -187,8 +206,7 @@ export const transitionWorkspaceMode = (
         case "TypeQuickTitle":
         case "SubmitQuickCard":
         case "OpenEditor":
-        case "UpdateDraft":
-        case "SubmitEditCard":
+        case "CommitEditedCard":
         case "CancelEditCard":
         case "CardDeleted":
           return IGNORED
@@ -208,23 +226,16 @@ export const transitionWorkspaceMode = (
             _tag: "Updated",
             mode: { _tag: "EditingCard", draft: event.draft }
           }
-        case "UpdateDraft":
-          return {
-            _tag: "Updated",
-            mode: { _tag: "EditingCard", draft: event.update(mode.draft) }
-          }
-        case "SubmitEditCard": {
-          const check = validateCardTitle(mode.draft.title)
-          if (!check.ok) {
-            return { _tag: "ValidationFailed", error: check.error }
+        case "CommitEditedCard":
+          if (event.draft.cardId !== mode.draft.cardId) {
+            return IGNORED
           }
           return {
             _tag: "CommitEditCard",
             mode: { _tag: "Idle" },
-            draft: mode.draft,
-            title: check.title
+            draft: event.draft,
+            title: event.title
           }
-        }
         case "CancelEditCard":
         case "Reset":
           return { _tag: "Updated", mode: IDLE_WORKSPACE_MODE }
@@ -236,6 +247,7 @@ export const transitionWorkspaceMode = (
         case "TypeQuickTitle":
         case "SubmitQuickCard":
         case "ReceiveMintResult":
+        case "FailMintResult":
         case "CancelQuickCard":
           return IGNORED
         default:

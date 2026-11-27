@@ -1,14 +1,18 @@
 import { readSegmentedControl } from "@universal-ui/behaviors"
 import type { Ui } from "@universal-ui/core"
 import { deriveBoardView } from "../../presentation/index.ts"
-import type { BoardScreenSnapshot } from "../../state/index.ts"
+import {
+  NoticeStateSchema,
+  type BoardScreenSnapshot
+} from "../../state/index.ts"
 import type { FolioPalette as Palette } from "../theme.ts"
 import {
   FolioAppMessage as Msg,
   type FolioAppMessage,
   type FolioAppProps
 } from "../FolioApp.ts"
-import { inspectorPanel } from "./InspectorPanel.ts"
+import { InspectorFeature } from "../components/InspectorFeature.ts"
+import { SyncStatus } from "../components/SyncStatus.ts"
 import { laneColumn } from "./LaneColumn.ts"
 import { pillBadge, secondaryButtonStyle, segmentedControl } from "./controls.ts"
 
@@ -320,15 +324,16 @@ export const columnsBoardView = (
             )
         ),
       // Notice banner
-      screen.notice._tag === "Visible" &&
+      NoticeStateSchema.guards.Visible(screen.notice) &&
         (() => {
-          const isError = screen.notice.tone === "error"
+          const notice = screen.notice
+          const isError = notice.tone === "error"
           const bg = isError ? p.accentSoft : p.pineSoft
           const fg = isError ? p.accent : p.pine
           return h.box
             .testId("board.notice")
             .role(isError ? "alert" : "status")
-            .ariaLabel(screen.notice.announcement)
+            .ariaLabel(notice.announcement)
             .style({
               flexDirection: "row",
               alignItems: "center",
@@ -343,7 +348,7 @@ export const columnsBoardView = (
             .children(
               h.text
                 .style({ fontSize: 12, fontWeight: "600", color: fg })
-                .children(screen.notice.message),
+                .children(notice.message),
               h.button
                 .testId("notice.dismiss")
                 .on("press", Msg.DismissedNotice())
@@ -378,7 +383,20 @@ export const columnsBoardView = (
             .children(
               board.lanes.map((entry) => laneColumn(h, screen, entry, p))
             ),
-          screen.inspectorOpen && inspectorPanel(h, screen, p)
+          screen.inspectorOpen &&
+            InspectorFeature.render(h, {
+              key: "mvu-trace",
+              props: {
+                theme: screen.theme,
+                dispatchCount: screen.dispatchCount,
+                undoDepth: screen.undoDepth,
+                redoDepth: screen.redoDepth
+              },
+              onEmit: {
+                Closed: () => Msg.ClickedToggleInspector()
+              },
+              fallback: () => h.box
+            })
         ),
       // Footer status bar
       h.box
@@ -398,10 +416,25 @@ export const columnsBoardView = (
             .children(
               `Unified @effect/ui + @ui-sdk/core app (${h.props.platformLabel}) · Click any card to edit, < / > to move lanes`
             ),
-          h.text
-            .testId("board.dispatches")
-            .style({ fontSize: 11.5, fontWeight: "600", color: p.inkSoft })
-            .children(`@effect/ui dispatches: ${screen.dispatchCount}`)
+          h.box
+            .style({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 14
+            })
+            .children(
+              SyncStatus(h, {
+                key: "board-sync",
+                props: {
+                  board: { cards: screen.cards, theme: screen.theme },
+                  theme: screen.theme
+                }
+              }),
+              h.text
+                .testId("board.dispatches")
+                .style({ fontSize: 11.5, fontWeight: "600", color: p.inkSoft })
+                .children(`@effect/ui dispatches: ${screen.dispatchCount}`)
+            )
         )
     )
 }

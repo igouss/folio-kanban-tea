@@ -155,19 +155,9 @@ describe("@folio/kanban-app pure reducer (zero @effect/ui runtime)", () => {
     )
     assert.equal(selectWorkspaceMode(typedWhileEditing.state)._tag, "EditingCard")
 
-    // Invalid editor submit produces error notice and stays EditingCard
-    state = reduce(state, { _tag: "TypedEditTitle", text: "X" }, ctx).state
-    const badEdit = reduce(state, { _tag: "SubmittedEditCard" }, ctx)
-    assert.equal(selectWorkspaceMode(badEdit.state)._tag, "EditingCard")
-    const editErr = selectNotice(badEdit.state)
-    assert.equal(editErr._tag, "Visible")
-    if (editErr._tag === "Visible") {
-      assert.equal(editErr.tone, "error")
-    }
-
     // Starting quick-add from EditingCard switches cleanly to Composing and hides notice
     state = reduce(
-      badEdit.state,
+      state,
       { _tag: "ClickedStartAddCard", lane: "review" },
       ctx
     ).state
@@ -182,25 +172,54 @@ describe("@folio/kanban-app pure reducer (zero @effect/ui runtime)", () => {
     state = reduce(state, { _tag: "TypedQuickTitle", text: "Cancel mid-flight" }, ctx).state
     state = reduce(state, { _tag: "SubmittedQuickCard" }, ctx).state
     assert.equal(selectWorkspaceMode(state)._tag, "SubmittingCard")
+
+    // Stale FailedMintCard does not disturb active attempt, while matching FailedMintCard returns to Composing
+    const staleFail = reduce(
+      state,
+      { _tag: "FailedMintCard", requestId: 99, error: "Stale error" },
+      ctx
+    )
+    assert.equal(selectWorkspaceMode(staleFail.state)._tag, "SubmittingCard")
+
+    const matchedFail = reduce(
+      state,
+      { _tag: "FailedMintCard", requestId: 1, error: "Invalid ID" },
+      ctx
+    )
+    assert.deepEqual(selectWorkspaceMode(matchedFail.state), {
+      _tag: "Composing",
+      lane: "review",
+      title: "Cancel mid-flight"
+    })
+    const failNotice = selectNotice(matchedFail.state)
+    assert.equal(failNotice._tag, "Visible")
+    if (failNotice._tag === "Visible") {
+      assert.equal(failNotice.tone, "error")
+      assert.ok(failNotice.message.includes("Invalid ID"))
+    }
+
+    // Re-submit (requestId: 2), cancel mid-flight, start attempt #3 (requestId: 3)
+    state = reduce(matchedFail.state, { _tag: "SubmittedQuickCard" }, ctx).state
+    assert.equal(selectWorkspaceMode(state)._tag, "SubmittingCard")
     state = reduce(state, { _tag: "CancelledQuickCard" }, ctx).state
     assert.deepEqual(selectWorkspaceMode(state), { _tag: "Idle" })
 
-    // Start second attempt (requestId: 2)
+    // Start third attempt (requestId: 3)
     state = reduce(state, { _tag: "ClickedStartAddCard", lane: "backlog" }, ctx).state
     state = reduce(state, { _tag: "TypedQuickTitle", text: "Second submit" }, ctx).state
     state = reduce(state, { _tag: "SubmittedQuickCard" }, ctx).state
     const secondMode = selectWorkspaceMode(state)
     assert.equal(secondMode._tag, "SubmittingCard")
     if (secondMode._tag === "SubmittingCard") {
-      assert.equal(secondMode.requestId, 2)
+      assert.equal(secondMode.requestId, 3)
     }
 
-    // Stale completion from attempt #1 cannot complete attempt #2
+    // Stale completion from attempt #2 cannot complete attempt #3
     const stale = reduce(
       state,
       {
         _tag: "CompletedMintCard",
-        requestId: 1,
+        requestId: 2,
         id: mustCardId("cli-stale-1"),
         createdAt: "2026-11-27T12:00:00.000Z",
         title: mustCardTitle("Cancel mid-flight"),
@@ -213,12 +232,12 @@ describe("@folio/kanban-app pure reducer (zero @effect/ui runtime)", () => {
     assert.equal(stale.effects.length, 0)
     assert.equal(selectWorkspaceMode(stale.state)._tag, "SubmittingCard")
 
-    // Matching completion for attempt #2 succeeds
+    // Matching completion for attempt #3 succeeds
     const accepted = reduce(
       stale.state,
       {
         _tag: "CompletedMintCard",
-        requestId: 2,
+        requestId: 3,
         id: mustCardId("cli-fresh-2"),
         createdAt: "2026-11-27T12:00:01.000Z",
         title: mustCardTitle("Second submit"),

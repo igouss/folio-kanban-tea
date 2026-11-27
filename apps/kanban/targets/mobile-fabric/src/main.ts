@@ -2,9 +2,9 @@ import "expo"
 
 import {
   FolioApp,
-  kanbanCommandsLayer,
   keyValueBoardRepositoryLayer,
-  loadFolioProps
+  loadFolioProps,
+  noopInspectorLayer
 } from "@folio/kanban-app"
 import { fabricLifecycleLayer } from "@universal-ui/host-fabric"
 import { registerApp } from "@universal-ui/host-fabric/register"
@@ -19,14 +19,12 @@ const BoardRepoLayer = keyValueBoardRepositoryLayer("folio.mobile.board.v1").pip
   Layer.provide(makeMemoryKeyValueStore().layer)
 )
 
-const AppLayer = Layer.provideMerge(
-  kanbanCommandsLayer,
-  Layer.mergeAll(
-    BoardRepoLayer,
-    fabricLifecycleLayer,
-    staticViewportLayer({ width: 390, height: 844, topInset: 56 }),
-    cryptoIdGeneratorLayer
-  )
+const PlatformLayer = Layer.mergeAll(
+  BoardRepoLayer,
+  noopInspectorLayer,
+  fabricLifecycleLayer,
+  staticViewportLayer({ width: 390, height: 844, topInset: 56 }),
+  cryptoIdGeneratorLayer
 )
 
 // Drives React Native Fabric directly from @folio/kanban-app via @universal-ui/host-fabric.
@@ -36,5 +34,5 @@ registerApp(
     runtimeTag: "mobile",
     platformLabel: "Fabric · Native Mobile"
   }),
-  { layer: AppLayer }
+  { layer: PlatformLayer }
 )

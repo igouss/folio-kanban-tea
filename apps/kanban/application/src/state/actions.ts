@@ -1,52 +1,62 @@
-import type {
-  CardId,
-  CardTitle,
+import type { SavedBoard } from "@folio/kanban-domain"
+import {
+  CardDraftSchema,
+  CardIdSchema,
+  CardTitleSchema,
   LaneId,
-  Priority,
-  PriorityFilter,
-  SavedBoard,
-  StoryPoints
-} from "@folio/kanban-domain"
-import type { LifecycleState, ViewportMetrics } from "@universal-ui/core"
-import type { CardDensity, KanbanState } from "./state.ts"
+  PriorityFilter
+} from "@folio/kanban-domain/schema"
+import { LifecycleState, ViewportMetricsSchema } from "@universal-ui/core"
+import * as Schema from "effect/Schema"
+import {
+  CardDensity,
+  PositiveRequestIdSchema,
+  type KanbanState
+} from "./state.ts"
 
-export type KanbanAction =
-  | { readonly _tag: "SelectedLane"; readonly lane: LaneId }
-  | { readonly _tag: "TypedSearchQuery"; readonly text: string }
-  | { readonly _tag: "SelectedPriorityFilter"; readonly priority: PriorityFilter }
-  | { readonly _tag: "SelectedDensity"; readonly density: CardDensity }
-  | { readonly _tag: "ClickedToggleTheme" }
-  | { readonly _tag: "ClickedToggleInspector" }
-  | { readonly _tag: "ClickedUndo" }
-  | { readonly _tag: "ClickedRedo" }
-  | { readonly _tag: "ClickedStartAddCard"; readonly lane: LaneId }
-  | { readonly _tag: "TypedQuickTitle"; readonly text: string }
-  | { readonly _tag: "SubmittedQuickCard" }
-  | {
-      readonly _tag: "CompletedMintCard"
-      readonly requestId: number
-      readonly id: CardId
-      readonly createdAt: string
-      readonly title: CardTitle
-      readonly lane: LaneId
-      readonly tag: string
-    }
-  | { readonly _tag: "CancelledQuickCard" }
-  | { readonly _tag: "ClickedMoveCard"; readonly cardId: CardId; readonly toLane: LaneId }
-  | { readonly _tag: "ClickedDeleteCard"; readonly cardId: CardId }
-  | { readonly _tag: "ClickedOpenEditor"; readonly cardId: CardId }
-  | { readonly _tag: "TypedEditTitle"; readonly text: string }
-  | { readonly _tag: "TypedEditNotes"; readonly text: string }
-  | { readonly _tag: "TypedEditAssignee"; readonly text: string }
-  | { readonly _tag: "SelectedEditLane"; readonly lane: LaneId }
-  | { readonly _tag: "SelectedEditPriority"; readonly priority: Priority }
-  | { readonly _tag: "SelectedEditPoints"; readonly points: StoryPoints }
-  | { readonly _tag: "SubmittedEditCard" }
-  | { readonly _tag: "CancelledEditCard" }
-  | { readonly _tag: "ClickedResetDemo" }
-  | { readonly _tag: "DismissedNotice" }
-  | { readonly _tag: "ChangedLifecycle"; readonly state: LifecycleState }
-  | { readonly _tag: "ChangedViewport"; readonly viewport: ViewportMetrics }
+/**
+ * Single source of truth for all root Kanban actions/messages (pure Effect Schema,
+ * zero @effect/ui dependency). `FolioAppMessage` derives its `UiSchema.TaggedEnum`
+ * directly from this map.
+ */
+export const KanbanActionCases = {
+  SelectedLane: { lane: LaneId },
+  TypedSearchQuery: { text: Schema.String },
+  SelectedPriorityFilter: { priority: PriorityFilter },
+  SelectedDensity: { density: CardDensity },
+  ClickedToggleTheme: {},
+  ClickedToggleInspector: {},
+  ClickedUndo: {},
+  ClickedRedo: {},
+  ClickedStartAddCard: { lane: LaneId },
+  TypedQuickTitle: { text: Schema.String },
+  SubmittedQuickCard: {},
+  CompletedMintCard: {
+    requestId: PositiveRequestIdSchema,
+    id: CardIdSchema,
+    createdAt: Schema.String,
+    title: CardTitleSchema,
+    lane: LaneId,
+    tag: Schema.String
+  },
+  FailedMintCard: {
+    requestId: PositiveRequestIdSchema,
+    error: Schema.String
+  },
+  CancelledQuickCard: {},
+  ClickedMoveCard: { cardId: CardIdSchema, toLane: LaneId },
+  ClickedDeleteCard: { cardId: CardIdSchema },
+  ClickedOpenEditor: { cardId: CardIdSchema },
+  SavedEditedCard: { draft: CardDraftSchema, title: CardTitleSchema },
+  CancelledEditCard: {},
+  ClickedResetDemo: {},
+  DismissedNotice: {},
+  ChangedLifecycle: { state: LifecycleState },
+  ChangedViewport: { viewport: ViewportMetricsSchema }
+} as const satisfies Record<string, Schema.Struct.Fields>
+
+export const KanbanActionSchema = Schema.TaggedUnion(KanbanActionCases)
+export type KanbanAction = typeof KanbanActionSchema.Type
 
 /**
  * Pure side-effect descriptors emitted by the reducer.
@@ -57,8 +67,8 @@ export type AppEffect =
   | {
       readonly _tag: "MintCardMeta"
       readonly requestId: number
-      readonly title: CardTitle
-      readonly lane: LaneId
+      readonly title: typeof CardTitleSchema.Type
+      readonly lane: typeof LaneId.Type
       readonly tag: string
     }
   | { readonly _tag: "ViewTransition"; readonly names: ReadonlyArray<string> }

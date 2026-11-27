@@ -1,7 +1,7 @@
 import {
   FolioApp,
-  kanbanCommandsLayer,
   keyValueBoardRepositoryLayer,
+  liveInspectorLayer,
   loadFolioProps
 } from "@folio/kanban-app"
 import { GpuiHost } from "@universal-ui/host-gpui"
@@ -17,14 +17,12 @@ const BoardRepoLayer = keyValueBoardRepositoryLayer("board").pipe(
   Layer.provide(makeFileStoreLayer({ appDirName: "folio-kanban-gpui" }))
 )
 
-const AppLayer = Layer.provideMerge(
-  kanbanCommandsLayer,
-  Layer.mergeAll(
-    BoardRepoLayer,
-    staticLifecycleLayer("active"),
-    staticViewportLayer({ width: 1280, height: 800, topInset: 0 }),
-    nodeIdGeneratorLayer
-  )
+const PlatformLayer = Layer.mergeAll(
+  BoardRepoLayer,
+  liveInspectorLayer,
+  staticLifecycleLayer("active"),
+  staticViewportLayer({ width: 1280, height: 800, topInset: 0 }),
+  nodeIdGeneratorLayer
 )
 
 const program = GpuiHost.run(
@@ -39,7 +37,7 @@ const program = GpuiHost.run(
     width: 1280,
     height: 800
   }
-).pipe(Effect.provide(AppLayer))
+).pipe(Effect.provide(PlatformLayer))
 
 Effect.runPromise(program).catch((error) => {
   console.error("[folio-kanban-desktop]", error)

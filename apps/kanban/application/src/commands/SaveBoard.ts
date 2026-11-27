@@ -9,7 +9,8 @@ import type * as Layer from "effect/Layer"
  * Knows nothing about KeyValueStore, JSON, localStorage, or filesystems.
  */
 export class SaveBoard extends Command.Service<SaveBoard>()("folio/SaveBoard", {
-  args: SavedBoardSchema
+  args: SavedBoardSchema,
+  mode: "queue"
 }) {
   static readonly layer: Layer.Layer<SaveBoard, never, BoardRepository> =
     this.toLayer(

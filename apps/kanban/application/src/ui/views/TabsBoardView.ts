@@ -1,6 +1,10 @@
 import type { Ui } from "@universal-ui/core"
 import { deriveBoardView } from "../../presentation/index.ts"
-import type { BoardScreenSnapshot } from "../../state/index.ts"
+import {
+  NoticeStateSchema,
+  WorkspaceModeSchema,
+  type BoardScreenSnapshot
+} from "../../state/index.ts"
 import type { FolioPalette as Palette } from "../theme.ts"
 import {
   FolioAppMessage as Msg,
@@ -35,11 +39,13 @@ export const tabsBoardView = (
   const visibleCards = activeLane.visibleCards
   const overWip = activeLane.stats.overWip
   const { canUndo, canRedo, workspaceMode } = screen
-  const quickTitle =
-    workspaceMode._tag === "Composing" || workspaceMode._tag === "SubmittingCard"
-      ? workspaceMode.title
-      : ""
-  const isSubmittingQuickCard = workspaceMode._tag === "SubmittingCard"
+  const isComposerMode = WorkspaceModeSchema.isAnyOf([
+    "Composing",
+    "SubmittingCard"
+  ])
+  const quickTitle = isComposerMode(workspaceMode) ? workspaceMode.title : ""
+  const isSubmittingQuickCard =
+    WorkspaceModeSchema.guards.SubmittingCard(workspaceMode)
 
   return h.box
     .style({ flex: 1, flexDirection: "column" })
@@ -335,15 +341,16 @@ export const tabsBoardView = (
               )
           ),
       // Notice banner
-      screen.notice._tag === "Visible" &&
+      NoticeStateSchema.guards.Visible(screen.notice) &&
         (() => {
-          const isError = screen.notice.tone === "error"
+          const notice = screen.notice
+          const isError = notice.tone === "error"
           const bg = isError ? p.accentSoft : p.pineSoft
           const fg = isError ? p.accent : p.pine
           return h.button
             .testId("board.notice")
             .role(isError ? "alert" : "status")
-            .ariaLabel(screen.notice.announcement)
+            .ariaLabel(notice.announcement)
             .on("press", Msg.DismissedNotice())
             .style({
               marginHorizontal: 16,
@@ -359,7 +366,7 @@ export const tabsBoardView = (
             .children(
               h.text
                 .style({ fontSize: 12, fontWeight: "600", color: fg })
-                .children(screen.notice.message),
+                .children(notice.message),
               h.text
                 .style({ fontSize: 11, fontWeight: "700", color: fg })
                 .children("OK")

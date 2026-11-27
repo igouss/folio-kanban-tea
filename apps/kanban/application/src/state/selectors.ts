@@ -35,7 +35,6 @@ export interface BoardScreenSnapshot {
   readonly notice: NoticeState
   readonly lifecycleBadge: string
   readonly inspectorOpen: boolean
-  readonly traceEntries: ReadonlyArray<string>
   readonly dispatchCount: number
 }
 
@@ -109,7 +108,6 @@ export const selectBoardScreen = (state: KanbanState): BoardScreenSnapshot => {
         ? `@effect/ui · ${shell.lifecycle} (${shell.backgroundTrips})`
         : `@effect/ui · ${shell.lifecycle}`,
     inspectorOpen: shell.inspector === "open",
-    traceEntries: shell.traceEntries,
     dispatchCount: shell.dispatchCount
   }
 }

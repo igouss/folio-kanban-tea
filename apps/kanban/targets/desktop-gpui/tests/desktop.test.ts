@@ -2,8 +2,8 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import {
   FolioApp,
-  kanbanCommandsLayer,
   keyValueBoardRepositoryLayer,
+  liveInspectorLayer,
   loadFolioProps,
   selectCanRedo,
   selectCanUndo,
@@ -42,14 +42,12 @@ describe("Folio Kanban Desktop (@folio/kanban-app on @universal-ui/host-gpui)", 
     const boardRepoLayer = keyValueBoardRepositoryLayer(storageKey).pipe(
       Layer.provide(store.layer)
     )
-    const appLayer = Layer.provideMerge(
-      kanbanCommandsLayer,
-      Layer.mergeAll(
-        boardRepoLayer,
-        staticLifecycleLayer("active"),
-        staticViewportLayer({ width: 1280, height: 800, topInset: 0 }),
-        makeSequenceIdGeneratorLayer()
-      )
+    const appLayer = Layer.mergeAll(
+      boardRepoLayer,
+      liveInspectorLayer,
+      staticLifecycleLayer("active"),
+      staticViewportLayer({ width: 1280, height: 800, topInset: 0 }),
+      makeSequenceIdGeneratorLayer()
     )
 
     await Effect.runPromise(

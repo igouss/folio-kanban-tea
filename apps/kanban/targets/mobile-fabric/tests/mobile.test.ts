@@ -1,9 +1,10 @@
 import {
   FolioApp,
-  kanbanCommandsLayer,
   keyValueBoardRepositoryLayer,
-  loadFolioProps
+  loadFolioProps,
+  noopInspectorLayer
 } from "@folio/kanban-app"
+import { BoardRepository } from "@folio/kanban-domain/ports"
 import { Engine } from "@ng-native/fabric"
 import {
   FabricHost,
@@ -20,7 +21,7 @@ import {
   staticViewportLayer
 } from "@universal-ui/platform/memory"
 import { makeMemoryKeyValueStore } from "@universal-ui/storage/memory"
-import { Layer } from "effect"
+import { Effect, Layer, Option } from "effect"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 beforeEach(() => {
@@ -63,14 +64,12 @@ const setup = () => {
   const boardRepoLayer = keyValueBoardRepositoryLayer("folio.mobile.test").pipe(
     Layer.provide(store.layer)
   )
-  const appLayer = Layer.provideMerge(
-    kanbanCommandsLayer,
-    Layer.mergeAll(
-      boardRepoLayer,
-      fabricLifecycleLayer,
-      staticViewportLayer({ width: 390, height: 844, topInset: 56 }),
-      makeSequenceIdGeneratorLayer()
-    )
+  const appLayer = Layer.mergeAll(
+    boardRepoLayer,
+    noopInspectorLayer,
+    fabricLifecycleLayer,
+    staticViewportLayer({ width: 390, height: 844, topInset: 56 }),
+    makeSequenceIdGeneratorLayer()
   )
 
   const app = FabricHost.mountApp(
@@ -220,6 +219,57 @@ describe("Folio Kanban Mobile (@folio/kanban-app on @universal-ui/host-fabric)",
     await settle(hasText("@effect/ui · background (1)"))
     fakeAppState.set("active")
     await settle(hasText("@effect/ui · active (1)"))
+    app.dispose()
+  })
+
+  it("mounts cleanly when BoardRepository.load is asynchronous (no Effect.runSync crash)", async () => {
+    const fabric = createFakeFabric()
+    const engine = new Engine(fabric, 1, {
+      processColor: (value) => value,
+      globalStyles: null,
+      conditions: {
+        width: 390,
+        height: 844,
+        colorScheme: "light",
+        fontScale: 1
+      }
+    })
+    const frames = manualFrames()
+    const asyncRepoLayer = Layer.succeed(BoardRepository, {
+      load: Effect.promise(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        return Option.none()
+      }),
+      save: () => Effect.void
+    })
+    const appLayer = Layer.mergeAll(
+      asyncRepoLayer,
+      noopInspectorLayer,
+      fabricLifecycleLayer,
+      staticViewportLayer({ width: 390, height: 844, topInset: 56 }),
+      makeSequenceIdGeneratorLayer()
+    )
+
+    const app = FabricHost.mountApp(
+      FolioApp,
+      loadFolioProps({
+        runtimeTag: "mobile",
+        platformLabel: "Fabric · Async Storage"
+      }),
+      engine,
+      {
+        platform: "ios",
+        requestAnimationFrame: frames.requestAnimationFrame,
+        layer: appLayer
+      }
+    )
+
+    const root = await app.ready
+    expect(root.model()).toBeDefined()
+    await vi.waitFor(() => {
+      frames.flush()
+      expect(fabric.render()).toContain('RawText "Folio Kanban"')
+    })
     app.dispose()
   })
 })
