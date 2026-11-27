@@ -389,7 +389,11 @@ export const tabsBoardView = (
                     .children(
                       h.text
                         .style({ fontSize: 14, fontWeight: "600", color: p.inkMuted })
-                        .children(`No cards in ${activeLaneMeta.title}`)
+                        .children(
+                          activeLane.stats.count > 0
+                            ? `${activeLane.stats.count} ${activeLane.stats.count === 1 ? "card" : "cards"} hidden by filter`
+                            : `No cards in ${activeLaneMeta.title}`
+                        )
                     )
                 : visibleCards.map((card) =>
                     cardItem(h, card, p, {

@@ -17,6 +17,7 @@ import type {
   CardTitle,
   KanbanCard,
   LaneId,
+  Priority,
 } from '../model/types.ts'
 
 export const DEFAULT_HISTORY_LIMIT = 50
@@ -91,6 +92,7 @@ export const applyCreateValidatedCard = (
     readonly id: CardId
     readonly tag: string
     readonly createdAt: string
+    readonly priority?: Priority
   },
 ): {
   readonly card: KanbanCard
@@ -104,7 +106,7 @@ export const applyCreateValidatedCard = (
       title: params.title,
       notes: '',
       lane: params.lane,
-      priority: 'medium',
+      priority: params.priority ?? 'medium',
       assignee: 'ME',
       points: 2,
       tags: [params.tag],

@@ -11,9 +11,11 @@ import {
   themeLabel,
   toggleTheme,
   undoHistory,
-  type CardDraft
+  type CardDraft,
+  type Priority
 } from "@folio/kanban-domain"
 import { formatTransferNotice } from "@universal-ui/behaviors"
+import { scoreCard } from "../presentation/search.ts"
 import type {
   AppEffect,
   KanbanAction,
@@ -335,19 +337,33 @@ export const reduce = (
       if (transition._tag !== "MintAccepted") {
         return { state, effects: NO_EFFECTS }
       }
+      const createdPriority: Priority =
+        state.workspace.priorityFilter === "all"
+          ? "medium"
+          : state.workspace.priorityFilter
       const result = applyCreateValidatedCard(state.board, {
         title: transition.title,
         lane: transition.lane,
         id: action.id,
         tag: action.tag,
-        createdAt: action.createdAt
+        createdAt: action.createdAt,
+        priority: createdPriority
       })
-      const message = `Added ${result.card.code} "${result.card.title}" to ${result.laneName}.`
+      const clearedSearch =
+        state.workspace.searchQuery.trim().length > 0 &&
+        scoreCard(result.card, state.workspace.searchQuery) === 0
+      const message = clearedSearch
+        ? `Added ${result.card.code} "${result.card.title}" to ${result.laneName} (cleared search filter).`
+        : `Added ${result.card.code} "${result.card.title}" to ${result.laneName}.`
       return {
         state: {
           ...state,
           board: { ...state.board, cards: result.cards, history: result.history },
-          workspace: { ...state.workspace, mode: transition.mode },
+          workspace: {
+            ...state.workspace,
+            ...(clearedSearch ? { searchQuery: "" } : {}),
+            mode: transition.mode
+          },
           shell: withTrace(
             state.shell,
             `CompletedMintCard(${result.card.code} -> ${transition.lane})`,

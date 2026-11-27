@@ -200,7 +200,11 @@ export const laneColumn = (
                     .children(
                       h.text
                         .style({ fontSize: 12, color: p.inkMuted })
-                        .children("No matching cards")
+                        .children(
+                          stats.count > 0
+                            ? `${stats.count} ${stats.count === 1 ? "card" : "cards"} hidden by filter`
+                            : `No cards in ${lane.title}`
+                        )
                     )
                 : visibleCards.map((card) =>
                     cardItem(h, card, p, {

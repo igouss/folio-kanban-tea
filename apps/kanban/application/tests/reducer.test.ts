@@ -24,6 +24,7 @@ import {
   selectTheme,
   selectWorkspaceMode
 } from "../src/state/index.ts"
+import { deriveBoardView } from "../src/presentation/index.ts"
 
 const mustCardId = (raw: string): CardId => {
   const parsed = parseCardId(raw)
@@ -307,5 +308,67 @@ describe("@folio/kanban-app pure reducer (zero @effect/ui runtime)", () => {
     assert.equal(selectBoardScreen(life).lifecycleBadge, "@effect/ui · active (1)")
     life = reduce(life, { _tag: "ChangedLifecycle", state: "background" }, ctx).state
     assert.equal(selectBackgroundTrips(life), 2)
+  })
+
+  it("keeps newly quick-added cards visible when priority or search filters are active", () => {
+    // 1. Active High priority filter -> new card inherits "high" priority and is visible
+    let state = boot()
+    state = reduce(state, { _tag: "SelectedPriorityFilter", priority: "high" }, ctx).state
+    state = reduce(state, { _tag: "ClickedStartAddCard", lane: "in_progress" }, ctx).state
+    state = reduce(state, { _tag: "TypedQuickTitle", text: "Urgent task under High filter" }, ctx).state
+    state = reduce(state, { _tag: "SubmittedQuickCard" }, ctx).state
+    state = reduce(
+      state,
+      {
+        _tag: "CompletedMintCard",
+        requestId: 1,
+        id: mustCardId("cli-high-1"),
+        createdAt: "2026-11-27T12:05:00.000Z",
+        title: mustCardTitle("Urgent task under High filter"),
+        lane: "in_progress",
+        tag: "cli"
+      },
+      ctx
+    ).state
+
+    const screen1 = selectBoardScreen(state)
+    const view1 = deriveBoardView({
+      idPrefix: "test",
+      cards: screen1.cards,
+      searchQuery: screen1.searchQuery,
+      priorityFilter: screen1.priorityFilter
+    })
+    const createdHigh = view1.visibleCards.find((c) => c.id === "cli-high-1")
+    assert.ok(createdHigh !== undefined)
+    assert.equal(createdHigh.priority, "high")
+
+    // 2. Active non-matching search query -> search filter clears so new card is immediately visible
+    state = reduce(state, { _tag: "TypedSearchQuery", text: "zzznomatch" }, ctx).state
+    state = reduce(state, { _tag: "ClickedStartAddCard", lane: "backlog" }, ctx).state
+    state = reduce(state, { _tag: "TypedQuickTitle", text: "Visible after clearing search" }, ctx).state
+    state = reduce(state, { _tag: "SubmittedQuickCard" }, ctx).state
+    state = reduce(
+      state,
+      {
+        _tag: "CompletedMintCard",
+        requestId: 2,
+        id: mustCardId("cli-search-2"),
+        createdAt: "2026-11-27T12:06:00.000Z",
+        title: mustCardTitle("Visible after clearing search"),
+        lane: "backlog",
+        tag: "cli"
+      },
+      ctx
+    ).state
+
+    const screen2 = selectBoardScreen(state)
+    assert.equal(screen2.searchQuery, "")
+    const view2 = deriveBoardView({
+      idPrefix: "test",
+      cards: screen2.cards,
+      searchQuery: screen2.searchQuery,
+      priorityFilter: screen2.priorityFilter
+    })
+    assert.ok(view2.visibleCards.some((c) => c.id === "cli-search-2"))
   })
 })
