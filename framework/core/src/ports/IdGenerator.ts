@@ -11,13 +11,14 @@ export class IdGenerator extends Context.Service<IdGenerator, {
 
 export const makeSequenceIdGeneratorLayer = (
   defaultPrefix = "id"
-): Layer.Layer<IdGenerator> => {
-  let counter = 0
-  return Layer.succeed(IdGenerator, {
-    nextId: (prefix) =>
-      Effect.sync(() => {
-        counter += 1
-        return `${prefix ?? defaultPrefix}-${counter}`
-      })
+): Layer.Layer<IdGenerator> =>
+  Layer.sync(IdGenerator, () => {
+    let counter = 0
+    return {
+      nextId: (prefix) =>
+        Effect.sync(() => {
+          counter += 1
+          return `${prefix ?? defaultPrefix}-${counter}`
+        })
+    }
   })
-}

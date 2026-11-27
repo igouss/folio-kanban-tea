@@ -15,20 +15,31 @@ export {
   staticViewportLayer
 }
 
-let fallbackCounter = 0
+export const makeUuidIdGeneratorLayer = (
+  generateUuid?: () => string
+): Layer.Layer<IdGenerator> =>
+  Layer.sync(IdGenerator, () => {
+    let fallbackCounter = 0
+    return {
+      nextId: (prefix) =>
+        Effect.sync(() => {
+          const uuid =
+            generateUuid !== undefined
+              ? generateUuid()
+              : typeof globalThis.crypto?.randomUUID === "function"
+                ? globalThis.crypto.randomUUID()
+                : undefined
+          if (prefix !== undefined && prefix.length > 0) {
+            const suffix =
+              uuid !== undefined
+                ? uuid.slice(0, 8)
+                : `${Date.now().toString(36)}-${++fallbackCounter}`
+            return `${prefix}-${suffix}`
+          }
+          return uuid ?? `${Date.now().toString(36)}-${++fallbackCounter}`
+        })
+    }
+  })
 
-export const cryptoIdGeneratorLayer: Layer.Layer<IdGenerator> = Layer.succeed(
-  IdGenerator,
-  {
-    nextId: (prefix) =>
-      Effect.sync(() => {
-        const suffix =
-          typeof globalThis.crypto?.randomUUID === "function"
-            ? globalThis.crypto.randomUUID().slice(0, 8)
-            : `${Date.now().toString(36)}-${++fallbackCounter}`
-        return prefix !== undefined && prefix.length > 0
-          ? `${prefix}-${suffix}`
-          : suffix
-      })
-  }
-)
+export const cryptoIdGeneratorLayer: Layer.Layer<IdGenerator> =
+  makeUuidIdGeneratorLayer()

@@ -1,6 +1,8 @@
 import { Component, Renderer, View } from "@effect/ui"
 import * as Context from "effect/Context"
+import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
+import type * as Scope from "effect/Scope"
 
 export const name = "universal-ui" as const
 
@@ -329,3 +331,36 @@ export const component: Component.Define<Elements> = Component.withElements(voca
 
 export const ref = (refName: string): Renderer.Ref<unknown> =>
   Renderer.ref<unknown>(refName)
+
+/**
+ * Shared typed bridge for host packages mounting a Component onto a host container
+ * with a pre-built Context (e.g. Renderer.Renderer + Ui.Host + platform host service).
+ */
+export const mountWithHost = <
+  Name extends string,
+  Props,
+  Model,
+  Msg,
+  Events,
+  R,
+  V extends View.Elements,
+  RP = never,
+  Provided = never,
+  Node = unknown
+>(
+  component: Component.Members<Name, Props, Model, Msg, Events, R, V, any>,
+  props: Props | Effect.Effect<Props, never, RP>,
+  container: Node,
+  context: Context.Context<Provided>
+): Effect.Effect<
+  Renderer.Root<Model, Msg>,
+  never,
+  Exclude<R | RP, Provided> | Scope.Scope
+> =>
+  (Renderer.mount(
+    component as any,
+    props as any,
+    container
+  ) as Effect.Effect<Renderer.Root<Model, Msg>, never, any>).pipe(
+    Effect.provideContext(context)
+  ) as any

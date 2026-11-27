@@ -27,37 +27,37 @@ const resolveStorage = (
 
 export const makeBrowserStoreLayer = (
   options: BrowserStoreOptions = {}
-): Layer.Layer<KeyValueStore> => {
-  const prefix = options.prefix ?? ""
-  const fullKey = (key: string) => `${prefix}${key}`
+): Layer.Layer<KeyValueStore> =>
+  Layer.sync(KeyValueStore, () => {
+    const prefix = options.prefix ?? ""
+    const fullKey = (key: string) => `${prefix}${key}`
 
-  return Layer.succeed(KeyValueStore, {
-    get: (key) =>
-      Effect.sync(() => {
-        try {
-          const raw = resolveStorage(options.storage)?.getItem(fullKey(key))
-          return raw !== null && raw !== undefined ? Option.some(raw) : Option.none()
-        } catch {
-          return Option.none()
-        }
-      }),
-    set: (key, value) =>
-      Effect.sync(() => {
-        try {
-          resolveStorage(options.storage)?.setItem(fullKey(key), value)
-        } catch {
-          // Ignore quota or private-browsing storage errors.
-        }
-      }),
-    remove: (key) =>
-      Effect.sync(() => {
-        try {
-          resolveStorage(options.storage)?.removeItem(fullKey(key))
-        } catch {
-          // Ignore storage removal errors.
-        }
-      })
+    return {
+      get: (key) =>
+        Effect.try({
+          try: () => resolveStorage(options.storage)?.getItem(fullKey(key)),
+          catch: (error) => error
+        }).pipe(
+          Effect.map((raw) =>
+            raw !== null && raw !== undefined ? Option.some(raw) : Option.none()
+          ),
+          Effect.catch(() => Effect.succeed(Option.none()))
+        ),
+      set: (key, value) =>
+        Effect.try({
+          try: () => {
+            resolveStorage(options.storage)?.setItem(fullKey(key), value)
+          },
+          catch: (error) => error
+        }).pipe(Effect.catch(() => Effect.void)),
+      remove: (key) =>
+        Effect.try({
+          try: () => {
+            resolveStorage(options.storage)?.removeItem(fullKey(key))
+          },
+          catch: (error) => error
+        }).pipe(Effect.catch(() => Effect.void))
+    }
   })
-}
 
 export const browserStoreLayer: Layer.Layer<KeyValueStore> = makeBrowserStoreLayer()

@@ -11,18 +11,22 @@ import type * as Scope from "effect/Scope"
 import * as Gpui from "./Gpui.ts"
 import { makeHost } from "./GpuiHost.ts"
 
+const makeScopedHost = (renderer: NativeRenderer) =>
+  Effect.gen(function* () {
+    const handle = makeHost(renderer)
+    yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
+    const context = Context.make(Renderer.Renderer, { host: handle.host }).pipe(
+      Context.add(Gpui.Host, handle.service),
+      Context.add(Ui.Host, { platform: "desktop" })
+    )
+    return { handle, context }
+  })
+
 export const layer = (
   renderer: NativeRenderer
 ): Layer.Layer<Renderer.Renderer | Gpui.Host | Ui.Host> =>
   Layer.effectContext(
-    Effect.gen(function* () {
-      const handle = makeHost(renderer)
-      yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
-      return Context.make(Renderer.Renderer, { host: handle.host }).pipe(
-        Context.add(Gpui.Host, handle.service),
-        Context.add(Ui.Host, { platform: "desktop" })
-      )
-    })
+    Effect.map(makeScopedHost(renderer), ({ context }) => context)
   )
 
 export const mount = <
@@ -44,22 +48,16 @@ export const mount = <
   Exclude<R | RP, Gpui.Host | Ui.Host | Renderer.Renderer> | Scope.Scope
 > =>
   Effect.gen(function* () {
-    const handle = makeHost(renderer)
-    yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
-    const ctx = Context.make(Renderer.Renderer, { host: handle.host }).pipe(
-      Context.add(Gpui.Host, handle.service),
-      Context.add(Ui.Host, { platform: "desktop" })
-    )
-    const root = yield* (Renderer.mount(
-      component as any,
-      props as any,
-      handle.rootContainer
-    ) as Effect.Effect<Renderer.Root<Model, Msg>, never, any>).pipe(
-      Effect.provideContext(ctx)
+    const { handle, context } = yield* makeScopedHost(renderer)
+    const root = yield* Ui.mountWithHost(
+      component,
+      props,
+      handle.rootContainer,
+      context
     )
     handle.flush()
     return { ...root, flush: handle.flush }
-  }) as any
+  })
 
 export const run = <
   Name extends string,

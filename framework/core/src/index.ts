@@ -3,6 +3,7 @@ export {
   Host,
   component,
   hostLayer,
+  mountWithHost,
   name,
   ref,
   vocabulary,
@@ -20,6 +21,12 @@ export {
   type UiPlatform,
   type UiStyle
 } from "./Ui.ts"
+export {
+  startScopedMachine,
+  type ScopedMachineDefinition,
+  type ScopedMachineHandle,
+  type ScopedMachineMode
+} from "./machine.ts"
 export {
   IdGenerator,
   KeyValueStore,

@@ -5,6 +5,7 @@ import { claimHost, type Engine, type EngineNode } from "@ng-native/fabric"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
+import * as Fiber from "effect/Fiber"
 import type * as Layer from "effect/Layer"
 import * as Scope from "effect/Scope"
 import * as Fabric from "./Fabric.ts"
@@ -501,9 +502,21 @@ export const makeHost = (
 
 export interface MountedFabricApp<Model, Msg> {
   readonly engine: Engine
-  readonly root: Renderer.Root<Model, Msg>
+  readonly ready: Promise<Renderer.Root<Model, Msg>>
+  readonly root: () => Renderer.Root<Model, Msg> | undefined
   readonly dispose: () => void
 }
+
+const makeScopedHost = (engine: Engine, options: FabricHostOptions = {}) =>
+  Effect.gen(function* () {
+    const handle = makeHost(engine, options)
+    yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
+    const context = Context.make(Renderer.Renderer, { host: handle.host }).pipe(
+      Context.add(Fabric.Host, { platform: options.platform ?? "unknown" }),
+      Context.add(Ui.Host, { platform: "mobile" })
+    )
+    return { handle, context }
+  })
 
 export const mount = <
   Name extends string,
@@ -525,22 +538,13 @@ export const mount = <
   Exclude<R | RP, Fabric.Host | Ui.Host | Renderer.Renderer> | Scope.Scope
 > =>
   Effect.gen(function* () {
-    const handle = makeHost(engine, options)
-    yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
-    const ctx = Context.make(Renderer.Renderer, { host: handle.host }).pipe(
-      Context.add(Fabric.Host, { platform: options.platform ?? "unknown" }),
-      Context.add(Ui.Host, { platform: "mobile" })
-    )
-    const mounted = (Renderer.mount(
-      component as any,
-      props as any,
-      handle.container
-    ) as Effect.Effect<Renderer.Root<Model, Msg>, never, any>).pipe(
-      Effect.provideContext(ctx)
-    )
+    const { handle, context } = yield* makeScopedHost(engine, options)
+    const mounted = Ui.mountWithHost(component, props, handle.container, context)
     return yield* (
       options.layer !== undefined
-        ? mounted.pipe(Effect.provide(options.layer))
+        ? (mounted as Effect.Effect<Renderer.Root<Model, Msg>, never, any>).pipe(
+            Effect.provide(options.layer)
+          )
         : mounted
     )
   }) as any
@@ -563,16 +567,46 @@ export const mountApp = <
   > = {}
 ): MountedFabricApp<Model, Msg> => {
   const scope = Effect.runSync(Scope.make())
-  const root = Effect.runSync(
-    mount(component, props, engine, options).pipe(
-      Scope.provide(scope)
-    ) as Effect.Effect<Renderer.Root<Model, Msg>>
+  let currentRoot: Renderer.Root<Model, Msg> | undefined
+  let resolveReady!: (root: Renderer.Root<Model, Msg>) => void
+  let rejectReady!: (error: unknown) => void
+  const ready = new Promise<Renderer.Root<Model, Msg>>((resolve, reject) => {
+    resolveReady = resolve
+    rejectReady = reject
+  })
+  // Prevent unhandled rejection warnings if a caller disposes before awaiting `ready`.
+  ready.catch(() => {})
+
+  const fiber = Effect.runFork(
+    (
+      mount(component, props, engine, options).pipe(
+        Scope.provide(scope)
+      ) as Effect.Effect<Renderer.Root<Model, Msg>>
+    ).pipe(
+      Effect.tap((root) =>
+        Effect.sync(() => {
+          currentRoot = root
+          resolveReady(root)
+        })
+      ),
+      Effect.tapCause((cause) =>
+        Effect.sync(() => {
+          rejectReady(cause)
+        })
+      )
+    )
   )
+
   return {
     engine,
-    root,
+    ready,
+    root: () => currentRoot,
     dispose: () => {
-      Effect.runFork(Scope.close(scope, Exit.void))
+      Effect.runFork(
+        Fiber.interrupt(fiber).pipe(
+          Effect.ensuring(Scope.close(scope, Exit.void))
+        )
+      )
     }
   }
 }

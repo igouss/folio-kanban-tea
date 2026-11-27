@@ -562,6 +562,21 @@ export const makeHost = (doc: Document): WebHostHandle => {
   return { host, dispose }
 }
 
+const makeScopedHost = (doc: Document) =>
+  Effect.gen(function* () {
+    const handle = makeHost(doc)
+    yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
+    const context = Context.make(Renderer.Renderer, { host: handle.host }).pipe(
+      Context.add(Ui.Host, { platform: "web" })
+    )
+    return { handle, context }
+  })
+
+export const layer = (
+  doc: Document
+): Layer.Layer<Renderer.Renderer | Ui.Host> =>
+  Layer.effectContext(Effect.map(makeScopedHost(doc), ({ context }) => context))
+
 export const mountEffect = <
   Name extends string,
   Props,
@@ -582,19 +597,9 @@ export const mountEffect = <
 > =>
   Effect.gen(function* () {
     const doc = container.ownerDocument ?? document
-    const handle = makeHost(doc)
-    yield* Effect.addFinalizer(() => Effect.sync(handle.dispose))
-    const ctx = Context.make(Renderer.Renderer, { host: handle.host }).pipe(
-      Context.add(Ui.Host, { platform: "web" })
-    )
-    return yield* (Renderer.mount(
-      component as any,
-      props as any,
-      container
-    ) as Effect.Effect<Renderer.Root<Model, Msg>, never, any>).pipe(
-      Effect.provideContext(ctx)
-    )
-  }) as any
+    const { context } = yield* makeScopedHost(doc)
+    return yield* Ui.mountWithHost(component, props, container, context)
+  })
 
 export const mount = <
   Name extends string,
@@ -610,4 +615,4 @@ export const mount = <
   props: Props | Effect.Effect<Props, never, RP>,
   container: globalThis.Element
 ): Layer.Layer<never, never, Exclude<R | RP, Ui.Host | Renderer.Renderer>> =>
-  Layer.effectDiscard(mountEffect(component, props, container)) as any
+  Layer.effectDiscard(mountEffect(component, props, container))

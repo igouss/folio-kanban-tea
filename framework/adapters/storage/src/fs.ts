@@ -1,10 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync
-} from "node:fs"
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { KeyValueStore } from "@universal-ui/core"
@@ -31,39 +25,54 @@ const filePathForKey = (dir: string, key: string): string => {
   return join(dir, `${safe}.json`)
 }
 
+const isNotFoundError = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  (error as { readonly code?: unknown }).code === "ENOENT"
+
 export const makeFileStoreLayer = (
   options: FileStoreOptions
-): Layer.Layer<KeyValueStore> => {
-  const dir = resolveDataDir(options)
-  return Layer.succeed(KeyValueStore, {
-    get: (key) =>
-      Effect.sync(() => {
-        const filePath = filePathForKey(dir, key)
-        if (!existsSync(filePath)) return Option.none()
-        try {
-          return Option.some(readFileSync(filePath, "utf8"))
-        } catch {
-          return Option.none()
-        }
-      }),
-    set: (key, value) =>
-      Effect.sync(() => {
-        try {
-          mkdirSync(dir, { recursive: true })
-          writeFileSync(filePathForKey(dir, key), value, "utf8")
-        } catch {
-          // Ignore disk persistence failures in restricted environments.
-        }
-      }),
-    remove: (key) =>
-      Effect.sync(() => {
-        const filePath = filePathForKey(dir, key)
-        if (!existsSync(filePath)) return
-        try {
-          unlinkSync(filePath)
-        } catch {
-          // Ignore file removal errors.
-        }
-      })
+): Layer.Layer<KeyValueStore> =>
+  Layer.sync(KeyValueStore, () => {
+    const dir = resolveDataDir(options)
+    return {
+      get: (key) =>
+        Effect.tryPromise({
+          try: () => readFile(filePathForKey(dir, key), "utf8"),
+          catch: (error) => error
+        }).pipe(
+          Effect.map(Option.some),
+          Effect.catch((error) =>
+            isNotFoundError(error)
+              ? Effect.succeed(Option.none())
+              : Effect.logWarning(`Failed to read key "${key}" from file store`).pipe(
+                  Effect.as(Option.none())
+                )
+          )
+        ),
+      set: (key, value) =>
+        Effect.tryPromise({
+          try: async () => {
+            await mkdir(dir, { recursive: true })
+            await writeFile(filePathForKey(dir, key), value, "utf8")
+          },
+          catch: (error) => error
+        }).pipe(
+          Effect.catch(() =>
+            Effect.logWarning(`Failed to write key "${key}" to file store`)
+          )
+        ),
+      remove: (key) =>
+        Effect.tryPromise({
+          try: () => unlink(filePathForKey(dir, key)),
+          catch: (error) => error
+        }).pipe(
+          Effect.catch((error) =>
+            isNotFoundError(error)
+              ? Effect.void
+              : Effect.logWarning(`Failed to remove key "${key}" from file store`)
+          )
+        )
+    }
   })
-}
